@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  name     String
+  email    String   @unique
+  password String
+  contact  Contact?
+}
+
+model Contact {
+  id    Int    @id @default(autoincrement())
+  phone String
+  city  String
+
+  userId         Int             @unique
+  user           User            @relation(fields: [userId], references: [id])
+  quote          Quote[]
+  invoice        Invoice[]
+  purchaseOrders PurchaseOrder[]
+  deliveryNotes  DeliveryNote[]
+  projects       Project[]
+}
+
+model Quote {
+  id          Int         @id @default(autoincrement())
+  reference   String      @unique
+  adresse     String
+  phone       String
+  email       String
+  webSite     String?
+  status      QuoteStatus @default(ON_HOLD)
+  subject     String
+  amount      Float
+  tva         Float
+  totalAmount Float
+
+  createdAt DateTime @default(now())
+
+  // relation avec Contact
+  contactId  Int
+  contact    Contact      @relation(fields: [contactId], references: [id])
+  quoteligne Quoteligne[]
+}
+
+enum QuoteStatus {
+  ON_HOLD
+  IN_PROGRESS
+  READY
+}
+
+model Quoteligne {
+  id          Int    @id @default(autoincrement())
+  description String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+  unity       String
+  quoteId     Int
+  quote       Quote  @relation(fields: [quoteId], references: [id])
+}
+
+model Invoice {
+  id            Int           @id @default(autoincrement())
+  name          String
+  status        InvoiceStatus
+  issueDate     DateTime
+  dueDate       DateTime
+  reference     String
+  subTotal      Float
+  discountTotal Float
+  taxTotal      Float
+
+  amountPaid   Float
+  balanceDue   Float
+  total        Float
+  tva          Float  @default(0.19)
+  paymentTerms String
+  currency     String
+
+  createdAt     DateTime       @default(now())
+  contactId     Int
+  contact       Contact        @relation(fields: [contactId], references: [id])
+  projectId     Int
+  project       Project        @relation(fields: [projectId], references: [id])
+  invoiceLignes InvoiceLigne[]
+  payments      Payment[]
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+}
+
+model InvoiceLigne {
+  id          Int     @id @default(autoincrement())
+  description String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+  unity       String
+  invoiceId   Int
+  invoice     Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model PurchaseOrder {
+  id        Int    @id @default(autoincrement())
+  reference String @unique
+
+  supplierName  String
+  supplierEmail String
+  supplierPhone String
+
+  orderDate    DateTime
+  deliveryDate DateTime?
+
+  status OrderStatus @default(PENDING)
+
+  subTotal Float
+  tax      Float
+  total    Float
+
+  notes String?
+
+  createdAt DateTime            @default(now())
+  contactId Int
+  contact   Contact             @relation(fields: [contactId], references: [id])
+  items     PurchaseOrderLine[]
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderLine {
+  id                   Int    @id @default(autoincrement())
+  description          String
+  quantity             Int
+  unitPrice            Float
+  totalPriceWithoutTVA Float
+  totalPrice           Float
+  unity                String
+  tva                  Float
+
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+}
+
+model DeliveryNote {
+  id        Int    @id @default(autoincrement())
+  reference String @unique
+
+  deliveryDate DateTime
+  location     String
+
+  status DeliveryStatus @default(PENDING)
+
+  createdAt DateTime           @default(now())
+  contactId Int
+  contact   Contact            @relation(fields: [contactId], references: [id])
+  // 🔗 relation avec lignes
+  items     DeliveryNoteLine[]
+}
+
+model DeliveryNoteLine {
+  id          Int    @id @default(autoincrement())
+  description String
+  quantity    Int
+  unity       String
+
+  deliveryNoteId Int
+  deliveryNote   DeliveryNote @relation(fields: [deliveryNoteId], references: [id])
+}
+
+enum DeliveryStatus {
+  PENDING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Project {
+  id          Int         @id @default(autoincrement())
+  title       String
+  description String
+  status      String
+  startDate   DateTime
+  endDate     DateTime
+  createdAt   DateTime    @default(now())
+  invoice     Invoice[]
+  milestone   Milestone[]
+  phases      Phase[]
+  contactId   Int
+  contact     Contact     @relation(fields: [contactId], references: [id])
+}
+
+enum ProjectStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+}
+
+model Milestone {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  deadline    DateTime
+  status      String
+
+  // relation
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Phase {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String
+  startDate   DateTime
+  endDate     DateTime?
+  status      String
+
+  // relation
+  projectId Int
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // relation with Deliverable
+  deliverables Deliverable[]
+}
+
+model Deliverable {
+  id          Int      @id @default(autoincrement())
+  name        String
+  deadline    DateTime
+  description String
+  status      String
+
+  // relation
+  phaseId Int
+  phase   Phase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  status      String // SUCCESS, FAILED, PENDING
+  invoiceId   Int
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  paymentDate DateTime @default(now())
+}

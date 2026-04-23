@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body {
+    font-family: Arial;
+    padding: 30px;
+    color: #333;
+  }
+
+  h1 {
+    color: #1e88a8;
+  }
+
+  .box {
+    border: 1px solid #ddd;
+    padding: 20px;
+    border-radius: 10px;
+  }
+
+  .row {
+    margin: 10px 0;
+  }
+
+  .label {
+    font-weight: bold;
+  }
+
+  .total {
+    font-size: 20px;
+    color: #1e88a8;
+    font-weight: bold;
+  }
+</style>
+</head>
+
+<body>
+
+<h1>Payment Receipt</h1>
+
+<div class="box">
+  <div class="row"><span class="label">Receipt:</span> {{receiptNumber}}</div>
+  <div class="row"><span class="label">Date:</span> {{date}}</div>
+
+  <hr/>
+
+  <div class="row"><span class="label">Client:</span> {{clientName}}</div>
+  <div class="row"><span class="label">Email:</span> {{clientEmail}}</div>
+
+  <hr/>
+
+  <div class="row"><span class="label">Invoice Ref:</span> {{invoiceRef}}</div>
+  <div class="row"><span class="label">Payment Method:</span> {{method}}</div>
+  <div class="row"><span class="label">Status:</span> {{status}}</div>
+
+  <hr/>
+
+  <div class="row total">
+    Amount Paid: {{amount}} TND
+  </div>
+</div>
+
+<p style="margin-top:30px; text-align:center; color:#1e88a8;">
+  Thank you for your payment!
+</p>
+
+</body>
+</html>
