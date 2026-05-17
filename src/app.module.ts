@@ -17,9 +17,11 @@ import { PhaseModule } from './modules/phase/phase.module';
 import { MilestoneModule } from './modules/milestone/milestone.module';
 import { DelivrableModule } from './modules/delivrable/delivrable.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { MessageModule } from './modules/message/message.module';
+import { MessageGateway } from './modules/message/message.gateway';
 
 @Module({
-  imports: [ContactModule, UsersModule,AuthModule,QuoteModule, QuoteligneModule, InvoiceligneModule,InvoiceModule,PurchaseOrderModule,PurchaseOrderligneModule,DeliveryNoteModule,DeliveryNoteligneModule, ProjectModule, PhaseModule, MilestoneModule,DelivrableModule,PaymentModule],
+  imports: [ContactModule, UsersModule,AuthModule,QuoteModule, QuoteligneModule, InvoiceligneModule,InvoiceModule,PurchaseOrderModule,PurchaseOrderligneModule,DeliveryNoteModule,DeliveryNoteligneModule, ProjectModule, PhaseModule, MilestoneModule,DelivrableModule,PaymentModule,MessageModule,MessageGateway],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -7,11 +7,13 @@ datasource db {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  name     String
-  email    String   @unique
-  password String
-  contact  Contact?
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String    @unique
+  password         String
+  contact          Contact?
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
 }
 
 model Contact {
@@ -259,4 +261,18 @@ model Payment {
   invoiceId   Int
   invoice     Invoice  @relation(fields: [invoiceId], references: [id])
   paymentDate DateTime @default(now())
+}
+
+model Message {
+  id Int @id @default(autoincrement())
+
+  content String?
+  fileUrl String?
+
+  senderId   Int
+  receiverId Int
+
+  sender   User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sentDate DateTime @default(now())
 }
