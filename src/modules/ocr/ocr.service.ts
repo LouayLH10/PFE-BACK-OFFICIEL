@@ -13,6 +13,10 @@ import * as fs from 'fs';
 
 import * as path from 'path';
 import { AiService } from '../IA/ai/ai.service';
+import { InvoiceService } from '../invoice/invoice.service';
+import { QuoteService } from '../quote/quote.service';
+import { ProjectService } from '../project/project.service';
+import { PurchaseOrderService } from '../purchase-order/purchase-order.service';
 
 const pdfPoppler = require('pdf-poppler');
 
@@ -22,148 +26,173 @@ export class OcrService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
+    private invoiceService:InvoiceService,
+    private quoteService:QuoteService,
+    private projectService:ProjectService,
+    private orderService:PurchaseOrderService
   ) {}
 
   // =========================================
   // 🔥 MAIN OCR
   // =========================================
 
-  async processDocument(
-    file: Express.Multer.File,
-    documentType: string,
-  ) {
+async processDocument(
+  id: number,
+  documentType: string,
+  contactId:number
+) {
 
-    if (!file) {
+  let pdfBuffer: Buffer;
+  let fileName = '';
 
-      throw new BadRequestException(
-        'File is required',
-      );
+  switch (documentType) {
 
-    }
+    case 'invoice':
 
-    const filePath = file.path;
+      pdfBuffer =
+        await this.invoiceService
+          .generatePdfById(id);
 
-    const mimeType = file.mimetype;
+      fileName =
+        `invoice-${id}.pdf`;
 
-    let extractedText = '';
+      break;
 
-    // =========================================
-    // 🔥 PDF OCR
-    // =========================================
+    case 'quote':
 
-    if (
-      mimeType === 'application/pdf'
-    ) {
+      pdfBuffer =
+        await this.quoteService
+          .generatePdfById(id);
 
-      extractedText =
-        await this.extractPdfText(
-          filePath,
-        );
+      fileName =
+        `quote-${id}.pdf`;
 
-    }
+      break;
 
-    // =========================================
-    // 🔥 IMAGE OCR
-    // =========================================
+    case 'project':
 
-    else if (
-      mimeType.includes('image')
-    ) {
+      pdfBuffer =
+        await this.projectService
+          .generatePdfById(id);
 
-      const result =
-        await Tesseract.recognize(
-          filePath,
-          'eng',
-        );
+      fileName =
+        `project-${id}.pdf`;
 
-      extractedText =
-        result.data.text;
+      break;
 
-    }
+    case 'purchase_order':
 
-    // =========================================
-    // 🔥 UNSUPPORTED
-    // =========================================
+      pdfBuffer =
+        await this.orderService
+          .generatePdfById(id);
 
-    else {
+      fileName =
+        `purchase-order-${id}.pdf`;
+
+      break;
+
+    default:
 
       throw new BadRequestException(
-        'Unsupported file type',
+        'Unsupported document type',
       );
-
-    }
-
-    // =========================================
-    // 🔥 FALLBACK
-    // =========================================
-
-    if (!extractedText) {
-
-      extractedText =
-        'No text extracted';
-
-    }
-
-    // =========================================
-    // 🔥 AI SUMMARY
-    // =========================================
-
-    const aiSummary =
-      extractedText.substring(0, 300);
-const extractedJson =
-  await this.aiService.extractDocument(
-    extractedText,
-    documentType,
-  );
-  const aiInsights =
-  await this.aiService.generateInsights(
-    extractedJson,
-    documentType,
-  );
-    // =========================================
-    // 🔥 SAVE DB
-    // =========================================
-
-    const document =
-      await this.prisma.ocrDocument.create({
-
-        data: {
-
-          fileName:
-            file.filename,
-
-          originalName:
-            file.originalname,
-
-          mimeType,
-
-          fileUrl:
-            `/uploads/${file.filename}`,
-
-          documentType,
-
-          extractedText,
-
-          aiSummary,
-           aiInsights,
-        extractedJson,
-          status:
-            'COMPLETED',
-
-        },
-
-      });
-
-    return {
-
-      message:
-        'OCR processed successfully',
-
-      document,
-
-    };
 
   }
+
+  const tempDir = path.join(
+    process.cwd(),
+    'uploads',
+  );
+
+  const filePath = path.join(
+    tempDir,
+    fileName,
+  );
+
+  fs.writeFileSync(
+    filePath,
+    pdfBuffer,
+  );
+
+  const extractedText =
+    await this.extractPdfText(
+      filePath,
+    );
+
+  const aiSummary =
+    extractedText.substring(
+      0,
+      300,
+    );
+
+  const extractedJson =
+    await this.aiService
+      .extractDocument(
+        extractedText,
+        documentType,
+      );
+
+  const aiInsights =
+    await this.aiService
+      .generateInsights(
+        extractedJson,
+        documentType,
+      );
+
+  const confidenceScore =
+    this.aiService
+      .calculateConfidence(
+        extractedJson,
+      );
+const executiveReport =
+  await this.aiService.generateExecutiveReport(
+    extractedJson,
+    aiInsights,
+    documentType,
+  );
+  const document =
+  await this.prisma.ocrDocument.create({
+  data: {
+    fileName,
+    originalName: fileName,
+    mimeType: 'application/pdf',
+    fileUrl: `/uploads/${fileName}`,
+
+    documentType,
+
+    extractedText,
+    aiSummary,
+    extractedJson,
+    aiInsights,
+   aiExecutiveReport:executiveReport,
+    contactId,
+
+    confidenceScore,
+
+    status: 'COMPLETED',
+
+    invoiceId:
+      documentType === 'invoice'
+        ? id
+        : null,
+
+    quoteId:
+      documentType === 'quote'
+        ? id
+        : null,
+
+    projectId:
+      documentType === 'project'
+        ? id
+        : null,
+
+
+  },
+});
+
+  return document;
+
+}
 
   // =========================================
   // 🔥 PDF → IMAGE → OCR
@@ -328,5 +357,59 @@ extractInvoiceData(text: string) {
 
   };
 
+}
+async findByUser(userId: number) {
+
+  return await this.prisma.ocrDocument.findMany({
+
+    where: {
+    contact: {
+              userId,
+            },
+  
+    },
+
+    orderBy: {
+      createdAt: 'desc',
+    },
+
+  });
+
+}
+ async verifyExistence(
+  id: number,
+  documentType: string,
+) {
+  const document =
+    await this.prisma.ocrDocument.findFirst({
+      where: {
+        documentType,
+
+        ...(documentType === 'invoice' && {
+          invoiceId: id,
+        }),
+
+        ...(documentType === 'quote' && {
+          quoteId: id,
+        }),
+
+        ...(documentType === 'project' && {
+          projectId: id,
+        }),
+
+        ...(documentType === 'purchaseOrder' && {
+          purchaseOrderId: id,
+        }),
+
+        ...(documentType === 'deliveryNote' && {
+          deliveryNoteId: id,
+        }),
+      },
+    });
+
+  return {
+    analyzed: !!document,
+    document,
+  };
 }
 }

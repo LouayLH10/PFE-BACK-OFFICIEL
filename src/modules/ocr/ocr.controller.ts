@@ -1,18 +1,10 @@
-// ocr.controller.ts
-
 import {
   Body,
   Controller,
+  Get,
+  Param,
   Post,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-
-import { FileInterceptor } from '@nestjs/platform-express';
-
-import { diskStorage } from 'multer';
-
-import { extname } from 'path';
 
 import { OcrService } from './ocr.service';
 
@@ -23,58 +15,46 @@ export class OcrController {
     private readonly ocrService: OcrService,
   ) {}
 
-  // =========================================
-  // 🔥 OCR UPLOAD ENDPOINT
-  // =========================================
+  @Post('analyze')
+  async analyzeDocument(
 
-  @Post('upload')
-
-  @UseInterceptors(
-    FileInterceptor('file', {
-
-      storage: diskStorage({
-
-        destination:
-          './uploads',
-
-        filename: (
-          req,
-          file,
-          callback,
-        ) => {
-
-          const uniqueName =
-            `${Date.now()}${extname(
-              file.originalname,
-            )}`;
-
-          callback(
-            null,
-            uniqueName,
-          );
-
-        },
-
-      }),
-
-    }),
-  )
-
-  async uploadDocument(
-
-    @UploadedFile()
-    file: Express.Multer.File,
+    @Body('id')
+    id: number,
 
     @Body('documentType')
     documentType: string,
-
+ @Body('contactId')
+    contactId: number,
   ) {
 
     return await this.ocrService.processDocument(
-      file,
+      Number(id),
       documentType,
+      contactId
     );
 
   }
+
+@Get('analyse/:userId')
+async findByUser(
+  @Param('userId') userId: string,
+) {
+
+  return this.ocrService.findByUser(
+    Number(userId),
+  );
+
+}
+@Post('verify')
+async verifyDocument(
+  @Body('id') id: number,
+  @Body('documentType')
+  documentType: string,
+) {
+  return this.ocrService.verifyExistence(
+    Number(id),
+    documentType,
+  );
+}
 
 }

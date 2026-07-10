@@ -12,6 +12,8 @@ model User {
   email            String    @unique
   password         String
   contact          Contact?
+  language String   @default("en")
+
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
 }
@@ -28,6 +30,7 @@ model Contact {
   purchaseOrders PurchaseOrder[]
   deliveryNotes  DeliveryNote[]
   projects       Project[]
+  ocrDocuments   OcrDocument[]
 }
 
 model Quote {
@@ -46,9 +49,9 @@ model Quote {
   createdAt DateTime @default(now())
 
   // relation avec Contact
-  contactId  Int
-  contact    Contact      @relation(fields: [contactId], references: [id])
-  quoteligne Quoteligne[]
+  contactId    Int
+  contact      Contact       @relation(fields: [contactId], references: [id])
+  quoteligne   Quoteligne[]
   ocrDocuments OcrDocument[]
 }
 
@@ -94,7 +97,7 @@ model Invoice {
   project       Project        @relation(fields: [projectId], references: [id])
   invoiceLignes InvoiceLigne[]
   payments      Payment[]
-  ocrDocuments OcrDocument[]
+  ocrDocuments  OcrDocument[]
 }
 
 enum InvoiceStatus {
@@ -134,10 +137,10 @@ model PurchaseOrder {
 
   notes String?
 
-  createdAt DateTime            @default(now())
-  contactId Int
-  contact   Contact             @relation(fields: [contactId], references: [id])
-  items     PurchaseOrderLine[]
+  createdAt    DateTime            @default(now())
+  contactId    Int
+  contact      Contact             @relation(fields: [contactId], references: [id])
+  items        PurchaseOrderLine[]
   ocrDocuments OcrDocument[]
 }
 
@@ -171,11 +174,11 @@ model DeliveryNote {
 
   status DeliveryStatus @default(PENDING)
 
-  createdAt DateTime           @default(now())
-  contactId Int
-  contact   Contact            @relation(fields: [contactId], references: [id])
+  createdAt    DateTime           @default(now())
+  contactId    Int
+  contact      Contact            @relation(fields: [contactId], references: [id])
   // 🔗 relation avec lignes
-  items     DeliveryNoteLine[]
+  items        DeliveryNoteLine[]
   ocrDocuments OcrDocument[]
 }
 
@@ -197,18 +200,18 @@ enum DeliveryStatus {
 }
 
 model Project {
-  id          Int         @id @default(autoincrement())
-  title       String
-  description String
-  status      String
-  startDate   DateTime
-  endDate     DateTime
-  createdAt   DateTime    @default(now())
-  invoice     Invoice[]
-  milestone   Milestone[]
-  phases      Phase[]
-  contactId   Int
-  contact     Contact     @relation(fields: [contactId], references: [id])
+  id           Int           @id @default(autoincrement())
+  title        String
+  description  String
+  status       String
+  startDate    DateTime
+  endDate      DateTime
+  createdAt    DateTime      @default(now())
+  invoice      Invoice[]
+  milestone    Milestone[]
+  phases       Phase[]
+  contactId    Int
+  contact      Contact       @relation(fields: [contactId], references: [id])
   ocrDocuments OcrDocument[]
 }
 
@@ -260,12 +263,12 @@ model Deliverable {
 }
 
 model Payment {
-  id          Int      @id @default(autoincrement())
-  amount      Float
-  status      String // SUCCESS, FAILED, PENDING
-  invoiceId   Int
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
-  paymentDate DateTime @default(now())
+  id           Int           @id @default(autoincrement())
+  amount       Float
+  status       String // SUCCESS, FAILED, PENDING
+  invoiceId    Int
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id])
+  paymentDate  DateTime      @default(now())
   ocrDocuments OcrDocument[]
 }
 
@@ -282,79 +285,80 @@ model Message {
   receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
   sentDate DateTime @default(now())
 }
+
 model OcrDocument {
+  id Int @id @default(autoincrement())
 
-  id               Int       @id @default(autoincrement())
+  fileName     String
+  originalName String
+  mimeType     String
 
-  fileName         String
-  originalName     String
-  mimeType         String
+  fileUrl String
 
-  fileUrl          String
+  documentType String
 
-  documentType     String
+  extractedText String?
+  aiExecutiveReport String? @db.Text
+  contactId     Int
+  contact       Contact @relation(fields: [contactId], references: [id])
+  aiSummary     String?
+  extractedJson Json?
 
-  extractedText    String?  
+  aiInsights Json?
 
-  aiSummary        String?  
+  status String @default("PENDING")
 
-  extractedJson    Json?
+  processingTime Float?
 
-  aiInsights       Json?
+  confidenceScore Float?
 
-  status           String    @default("PENDING")
+  createdAt DateTime @default(now())
 
-  processingTime   Float?
+  updatedAt DateTime @updatedAt
 
-  confidenceScore  Float?
+  invoiceId Int?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
 
-  createdAt        DateTime  @default(now())
+  quoteId Int?
+  quote   Quote? @relation(fields: [quoteId], references: [id])
 
-  updatedAt        DateTime  @updatedAt
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
 
-  invoiceId        Int?
-  invoice          Invoice? @relation(fields: [invoiceId], references: [id])
+  paymentId Int?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
 
-  quoteId          Int?
-  quote            Quote? @relation(fields: [quoteId], references: [id])
+  deliveryNoteId Int?
+  deliveryNote   DeliveryNote? @relation(fields: [deliveryNoteId], references: [id])
 
-  projectId        Int?
-  project          Project? @relation(fields: [projectId], references: [id])
+  purchaseOrderId Int?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
 
-  paymentId        Int?
-  payment          Payment? @relation(fields: [paymentId], references: [id])
-
-  deliveryNoteId   Int?
-  deliveryNote     DeliveryNote? @relation(fields: [deliveryNoteId], references: [id])
-
-  purchaseOrderId    Int?
-  purchaseOrder      PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-
-  analytics        OcrAnalytics[]
+  analytics OcrAnalytics[]
 }
+
 model OcrAnalytics {
+  id Int @id @default(autoincrement())
 
-  id              Int       @id @default(autoincrement())
+  totalAmount Float?
 
-  totalAmount     Float?
+  tva Float?
 
-  tva             Float?
+  currency String?
 
-  currency        String?
+  invoiceNumber String?
 
-  invoiceNumber   String?
+  clientName String?
 
-  clientName      String?
+  paymentStatus String?
 
-  paymentStatus   String?
+  invoiceDate DateTime?
 
-  invoiceDate     DateTime?
+  extractedJson Json?
 
-  extractedJson   Json?
-
-  createdAt       DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   // relation OCR
-  ocrDocumentId   Int
-  ocrDocument     OcrDocument @relation(fields: [ocrDocumentId], references: [id])
+  ocrDocumentId Int
+  ocrDocument   OcrDocument @relation(fields: [ocrDocumentId], references: [id])
 }
