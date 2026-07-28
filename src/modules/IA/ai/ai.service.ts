@@ -1,9 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
+import * as fs from "fs";
+import FormData from "form-data";
+import OpenAI from "openai";
+import * as os from "os";
+import * as path from "path";
 
 @Injectable()
 export class AiService {
-
+private openai = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1",
+});
   async extractDocument(
     text: string,
     documentType: string,
@@ -287,6 +295,172 @@ calculateConfidence(
   );
 
 }
+async extractProducts(
+  text: string,
+  model =  "qwen2.5:3b",
+) {
+console.log("text =",text)
+const prompt = `
+You are an ERP Voice Assistant.
+
+The customer is speaking to request a quotation or an invoice.
+
+Your task is to extract the requested products.
+
+Return ONLY valid JSON.
+
+Schema:
+
+{
+  "language": "fr",
+  "products": [
+    {
+      "name": "Product name",
+      "quantity": 2
+    }
+  ]
+}
+
+Rules:
+
+- Detect the language ("fr" or "en").
+- Return ONLY valid JSON.
+- Do not use markdown.
+- Do not explain anything.
+
+Quantity rules:
+
+- Quantity must always be a number.
+- If no quantity is mentioned, use 1.
+
+Product extraction rules:
+
+- Extract every requested product.
+- Preserve the complete product designation.
+- Preserve the brand name.
+- Preserve the product family.
+- Preserve the model when mentioned.
+- Never simplify a product.
+- Never replace a specific product with a generic one.
+- Return product names in singular form.
+- Remove only grammatical plurals.
+- Correct obvious speech recognition (ASR) mistakes.
+- Correct spelling mistakes.
+- Correct pronunciation mistakes.
+- Correct brand names to the closest well-known brand.
+- If the intended product is obvious, normalize its spelling.
+- Never invent products that were not mentioned.
+- If the customer says only a generic product, keep it generic.
+
+Examples:
+
+Input:
+I want 2 HP ProBook laptops, 5 wireless mice and 2 Dell monitors.
+
+Output:
+{
+  "language":"en",
+  "products":[
+    {
+      "name":"HP ProBook Laptop",
+      "quantity":2
+    },
+    {
+      "name":"Wireless Mouse",
+      "quantity":5
+    },
+    {
+      "name":"Dell Monitor",
+      "quantity":2
+    }
+  ]
+}
+
+Input:
+Je veux deux ordinateurs HP ProBook, cinq souris sans fil et deux écrans Dell.
+
+Output:
+{
+  "language":"fr",
+  "products":[
+    {
+      "name":"HP ProBook Laptop",
+      "quantity":2
+    },
+    {
+      "name":"Wireless Mouse",
+      "quantity":5
+    },
+    {
+      "name":"Dell Monitor",
+      "quantity":2
+    }
+  ]
+}
+
+Input:
+Je veux deux écrondelles.
+
+Output:
+{
+  "language":"fr",
+  "products":[
+    {
+      "name":"Dell Monitor",
+      "quantity":2
+    }
+  ]
+}
+
+Input:
+Je veux cinq souris sont filles.
+
+Output:
+{
+  "language":"fr",
+  "products":[
+    {
+      "name":"Wireless Mouse",
+      "quantity":5
+    }
+  ]
+}
+
+Input:
+I need three logitèque wireless mice.
+
+Output:
+{
+  "language":"en",
+  "products":[
+    {
+      "name":"Logitech Wireless Mouse",
+      "quantity":3
+    }
+  ]
+}
+
+Customer request:
+
+${text}
+`;
+
+  const response = await axios.post(
+    'http://localhost:11434/api/generate',
+    {
+      model,
+      prompt,
+      stream: false,
+    },
+    {
+      timeout: 300000,
+    },
+  );
+
+  const result = response.data.response.trim();
+
+  return JSON.parse(result);
+}
 async generateExecutiveReport(
   extractedJson: any,
   aiInsights: any,
@@ -331,5 +505,29 @@ Rules:
   );
 
   return response.data.response;
+}
+
+async speechToText(file: Express.Multer.File): Promise<string> {
+  const formData = new FormData();
+
+  formData.append(
+    "audio",
+    file.buffer,
+    {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    },
+  );
+
+  const response = await axios.post(
+    "http://127.0.0.1:5000/transcribe",
+    formData,
+    {
+      headers: formData.getHeaders(),
+      maxBodyLength: Infinity,
+    },
+  );
+
+  return response.data.text;
 }
 }

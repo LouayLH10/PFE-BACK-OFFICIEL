@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateQuoteDto } from './dto/create-quote.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -7,7 +7,7 @@ import path from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
 import puppeteer from 'puppeteer';
-
+import chromium from '@sparticuz/chromium';
 @Injectable()
 export class QuoteService {
   constructor(private prisma: PrismaService) {}
@@ -146,7 +146,7 @@ private mapQuoteToTemplate(quoteFromDB: any) {
     total: quoteFromDB.totalAmount,
   };
 }
-async generatePdfById(id: number): Promise<Buffer> {
+async generatePdfById(id: number,language:string): Promise<Buffer> {
 
   const quote = await this.prisma.quote.findUnique({
     where: { id },
@@ -160,37 +160,60 @@ async generatePdfById(id: number): Promise<Buffer> {
     },
   });
 
-  const data = this.mapQuoteToTemplate(quote); // 🔥 ici
-
-  return this.generatePdf(data); // puppeteer
-}
-async generatePdf(data: any): Promise<Buffer> {
-    const templatePath = path.join(
-      process.cwd(),
-      'src/modules/quote/templates/quote.hbs'
-    );
-
-    const templateHtml = fs.readFileSync(templatePath, 'utf-8');
-
-    const template = handlebars.compile(templateHtml);
-
-    const html = template(data);
-
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-
-    await page.setContent(html);
-
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-    });
-const pdfBuffer = Buffer.from(pdf);
-
-    await browser.close();
-
-    return pdfBuffer;
+  if (!quote) {
+    throw new NotFoundException("Quote not found");
   }
+
+  const data = this.mapQuoteToTemplate(quote);
+
+  // 🔥 récupérer la langue de l'utilisateur
+
+  return this.generatePdf(data, language);
+}
+async generatePdf(
+  data: any,
+  language: string,
+): Promise<Buffer> {
+
+  const templatePath = path.join(
+    process.cwd(),
+    "src/modules/quote/templates",
+    `quote-${language}.hbs`,
+  );
+
+  const templateHtml = fs.readFileSync(templatePath, "utf8");
+  const template = handlebars.compile(templateHtml);
+  const html = template(data);
+
+  let browser;
+
+  if (process.env.NODE_ENV === "PROD") {
+    browser = await puppeteer.launch({
+      executablePath: await chromium.executablePath(),
+      args: chromium.args,
+      headless: true,
+    });
+  } else {
+    browser = await puppeteer.launch({
+      headless: true,
+    });
+  }
+
+  const page = await browser.newPage();
+
+  await page.setContent(html, {
+    waitUntil: "load",
+  });
+
+  const pdf = await page.pdf({
+    format: "A4",
+    printBackground: true,
+  });
+
+  await browser.close();
+
+  return Buffer.from(pdf);
+}
   async changeStatus(id: number) {
   // 1️⃣ récupérer quote actuel
   const quote = await this.prisma.quote.findUnique({
@@ -228,5 +251,120 @@ const pdfBuffer = Buffer.from(pdf);
       status: newStatus,
     },
   });
+}
+private buildQuoteTemplate(
+    contact,
+    items
+) {
+
+    const subTotal =
+        items.reduce(
+            (s, i) => s + i.total,
+            0,
+        );
+
+    const taxRate = 19;
+
+    const taxTotal =
+        subTotal * taxRate / 100;
+
+    return {
+
+        numero: `VOICE-${Date.now()}`,
+
+        date: new Date().toLocaleDateString(),
+
+        clientName: contact.user.name,
+
+        clientEmail: contact.user.email,
+
+        clientAdresse: contact.city,
+
+        items,
+
+        subtotal: subTotal,
+
+        tva: taxRate,
+
+        tvaAmount: taxTotal,
+
+        total: subTotal + taxTotal,
+
+    };
+
+}
+async createVoiceQuote(    userId: number,
+    language: string,
+    products: {
+        productId: number;
+        quantity: number;
+    }[]) {
+
+    const contact = await this.prisma.contact.findUnique({
+        where: {
+            id: userId,
+        },
+        include: {
+            user: true,
+        },
+    });
+
+    if (!contact)
+        throw new Error("Contact not found");
+const items: {
+  description: string;
+  quantity: number;
+  price: number;
+  total: number;
+  unity: string;
+}[] = [];
+    let subTotal = 0;
+
+    for (const item of products) {
+console.log("ITEM =", item);
+    console.log("PRODUCT ID =", item.productId);
+        const product = await this.prisma.product.findUnique({
+            where: {
+                id: item.productId,
+            },
+        });
+
+        if (!product)
+            continue;
+
+        const lineTotal =
+            product.unitPrice *
+            item.quantity;
+
+        subTotal += lineTotal;
+
+          items.push({
+              description: product.name,
+              quantity: item.quantity,
+              price: product.unitPrice,
+              total: lineTotal,
+              unity: product.unit,
+          });
+
+    }
+
+    const taxRate = 19;
+
+    const taxTotal =
+        subTotal * taxRate / 100;
+
+    const total =
+        subTotal + taxTotal;
+
+const template =
+    this.buildQuoteTemplate(
+        contact,
+        items,
+    );
+
+return this.generatePdf(
+    template,
+    language,
+);
 }
 }

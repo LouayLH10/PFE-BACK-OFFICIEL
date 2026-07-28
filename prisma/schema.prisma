@@ -7,11 +7,11 @@ datasource db {
 }
 
 model User {
-  id               Int       @id @default(autoincrement())
-  name             String
-  email            String    @unique
-  password         String
-  contact          Contact?
+  id       Int      @id @default(autoincrement())
+  name     String
+  email    String   @unique
+  password String
+  contact  Contact?
   language String   @default("en")
 
   sentMessages     Message[] @relation("SentMessages")
@@ -82,22 +82,72 @@ model Invoice {
   subTotal      Float
   discountTotal Float
   taxTotal      Float
+  amountPaid    Float
+  balanceDue    Float
+  total         Float
+  tva           Float         @default(0.19)
+  paymentTerms  String
+  currency      String
 
-  amountPaid   Float
-  balanceDue   Float
-  total        Float
-  tva          Float  @default(0.19)
-  paymentTerms String
-  currency     String
+  createdAt DateTime @default(now())
 
-  createdAt     DateTime       @default(now())
-  contactId     Int
-  contact       Contact        @relation(fields: [contactId], references: [id])
-  projectId     Int
-  project       Project        @relation(fields: [projectId], references: [id])
+  contactId Int
+  contact   Contact @relation(fields: [contactId], references: [id])
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+
   invoiceLignes InvoiceLigne[]
   payments      Payment[]
   ocrDocuments  OcrDocument[]
+}
+
+model Product {
+
+  id            Int      @id @default(autoincrement())
+
+  reference     String   @unique
+
+  name          String
+
+  description   String?
+
+  unitPrice     Float
+
+  stock         Int
+
+  unit          Unit
+
+  taxRate       Float
+
+  active        Boolean @default(true)
+
+  categoryId    Int
+
+  category      Category @relation(fields:[categoryId],references:[id])
+
+  translations  ProductTranslation[]
+  invoiceLignes InvoiceLigne[]
+  createdAt     DateTime @default(now())
+
+  updatedAt     DateTime @updatedAt
+}
+enum Unit {
+  PIECE
+  SERVICE
+  KG
+  LITRE
+  METER
+  PACK
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 enum InvoiceStatus {
@@ -108,16 +158,36 @@ enum InvoiceStatus {
 }
 
 model InvoiceLigne {
-  id          Int     @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   description String
   quantity    Int
   unitPrice   Float
   totalPrice  Float
   unity       String
   invoiceId   Int
-  invoice     Invoice @relation(fields: [invoiceId], references: [id])
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  product     Product? @relation(fields: [productId], references: [id])
+  productId   Int?
 }
+model ProductTranslation {
+  id         Int      @id @default(autoincrement())
 
+  language   String
+
+  name       String
+
+  description String?
+
+  productId  Int
+
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, language])
+}
 model PurchaseOrder {
   id        Int    @id @default(autoincrement())
   reference String @unique
@@ -297,12 +367,12 @@ model OcrDocument {
 
   documentType String
 
-  extractedText String?
+  extractedText     String?
   aiExecutiveReport String? @db.Text
-  contactId     Int
-  contact       Contact @relation(fields: [contactId], references: [id])
-  aiSummary     String?
-  extractedJson Json?
+  contactId         Int
+  contact           Contact @relation(fields: [contactId], references: [id])
+  aiSummary         String?
+  extractedJson     Json?
 
   aiInsights Json?
 

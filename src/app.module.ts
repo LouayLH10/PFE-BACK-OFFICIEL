@@ -21,9 +21,11 @@ import { MessageModule } from './modules/message/message.module';
 import { MessageGateway } from './modules/message/message.gateway';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { BiModule } from './modules/bi/bi.module';
+import { PdfDashboardModule } from './modules/pdf-dashboard/pdf-dashboard.module';
+import { VoiceAssistantModule } from './modules/voice-assistant/voice-assistant.module';
 
 @Module({
-  imports: [ContactModule, UsersModule,AuthModule,QuoteModule, QuoteligneModule, InvoiceligneModule,InvoiceModule,PurchaseOrderModule,PurchaseOrderligneModule,DeliveryNoteModule,DeliveryNoteligneModule, ProjectModule, PhaseModule, MilestoneModule,DelivrableModule,PaymentModule,MessageModule,MessageGateway, OcrModule, BiModule],
+  imports: [ContactModule, UsersModule,AuthModule,QuoteModule, QuoteligneModule, InvoiceligneModule,InvoiceModule,PurchaseOrderModule,PurchaseOrderligneModule,DeliveryNoteModule,DeliveryNoteligneModule, ProjectModule, PhaseModule, MilestoneModule,DelivrableModule,PaymentModule,MessageModule,MessageGateway, OcrModule, BiModule,PdfDashboardModule,VoiceAssistantModule],
   controllers: [AppController],
   providers: [AppService],
 })

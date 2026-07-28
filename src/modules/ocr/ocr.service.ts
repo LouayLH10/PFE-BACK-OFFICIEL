@@ -51,7 +51,7 @@ async processDocument(
 
       pdfBuffer =
         await this.invoiceService
-          .generatePdfById(id);
+          .generatePdfById(id,'en');
 
       fileName =
         `invoice-${id}.pdf`;
@@ -62,7 +62,7 @@ async processDocument(
 
       pdfBuffer =
         await this.quoteService
-          .generatePdfById(id);
+          .generatePdfById(id,"en");
 
       fileName =
         `quote-${id}.pdf`;
@@ -73,7 +73,7 @@ async processDocument(
 
       pdfBuffer =
         await this.projectService
-          .generatePdfById(id);
+          .generatePdfById(id,'en');
 
       fileName =
         `project-${id}.pdf`;
@@ -84,7 +84,7 @@ async processDocument(
 
       pdfBuffer =
         await this.orderService
-          .generatePdfById(id);
+          .generatePdfById(id,"en");
 
       fileName =
         `purchase-order-${id}.pdf`;

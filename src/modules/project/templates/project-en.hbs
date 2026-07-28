@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  html,body{
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    display: flex;
+  }
+
+  /* 🔵 LEFT PANEL */
+  .sidebar {
+    width: 30%;
+    background: #1e88a8;
+    color: white;
+    padding: 30px;
+  }
+
+  .sidebar h1 {
+    font-size: 24px;
+    margin-bottom: 30px;
+  }
+
+  .sidebar p {
+    margin: 10px 0;
+    font-size: 14px;
+  }
+
+  .label {
+    font-weight: bold;
+  }
+
+  /* ⚪ RIGHT CONTENT */
+  .content {
+    width: 70%;
+    background: #f5f7fa;
+    padding: 20px;
+  }
+
+
+  .card {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        margin-top: 30px;
+
+  }
+
+  .card h3 {
+    margin-bottom: 10px;
+    color: #1e88a8;
+  }
+
+  .small {
+    font-size: 13px;
+    color: #555;
+  }
+
+  ul {
+    padding-left: 18px;
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- 🔵 SIDEBAR -->
+<div class="sidebar">
+  <h1>Project Charter</h1>
+
+  <p><span class="label">Project Title:</span><br>{{title}}</p>
+
+  <p><span class="label">Project Manager:</span><br>{{clientName}}</p>
+
+  <p><span class="label">Email:</span><br>{{clientEmail}}</p>
+
+  <p><span class="label">Start Date:</span><br>{{startDate}}</p>
+
+  <p><span class="label">End Date:</span><br>{{endDate}}</p>
+
+  <p><span class="label">Status:</span><br>{{status}}</p>
+</div>
+
+<!-- ⚪ CONTENT -->
+<div class="content">
+
+  <div class="grid">
+
+    <!-- PURPOSE -->
+    <div class="card">
+      <h3>Project Purpose</h3>
+      <p class="small">{{description}}</p>
+    </div>
+
+    <!-- HIGH LEVEL DESC -->
+
+
+
+
+    <!-- PHASES -->
+<div class="card">
+  <h3>Project Phases</h3>
+
+  <ul>
+    {{#each phases}}
+      <li style="margin-bottom: 10px;">
+        <b>{{this.name}}</b> - {{this.status}} <br/>
+        <span class="small">{{this.startDate}} → {{this.endDate}}</span>
+
+        <!-- 🔥 DELIVERABLES DE LA PHASE -->
+        {{#if this.deliverables.length}}
+          <ul>
+            {{#each this.deliverables}}
+              <li class="small">
+                • {{this.name}} ({{this.status}}) - {{this.deadline}}
+              </li>
+            {{/each}}
+          </ul>
+        {{/if}}
+
+      </li>
+    {{/each}}
+  </ul>
+</div>
+    <!-- MILESTONES -->
+    <div class="card">
+      <h3>Milestones</h3>
+      <ul>
+        {{#each milestones}}
+          <li>
+            <b>{{this.name}}</b> - {{this.status}} <br/>
+            <span class="small">{{this.deadline}}</span>
+          </li>
+        {{/each}}
+      </ul>
+    </div>
+
+    <!-- RISK -->
+
+
+  </div>
+
+</div>
+
+</body>
+</html>

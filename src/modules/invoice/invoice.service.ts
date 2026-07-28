@@ -5,8 +5,11 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import path from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
+import chromium from "@sparticuz/chromium";
 import puppeteer from 'puppeteer';
-
+import puppeteerCore from 'puppeteer-core';
+import { SimulateVoiceDto } from '../voice-assistant/dto/simulate-voice.dto';
+import { InvoiceStatus } from '@prisma/client';
 @Injectable()
 export class InvoiceService {
 
@@ -30,26 +33,31 @@ export class InvoiceService {
   }
   const reference = `INV-${year}-${String(nextNumber).padStart(4, '0')}`;
 
-    return await this.prisma.invoice.create({
-      data: {
-        ...data,
-      subTotal: 0,
-      taxTotal: 0,
-      total: 0,
-      balanceDue: 0,
-      discountTotal:0,
-      reference:reference,
-        contact: {
-          connect: { id: contactId }, // 🔗 relation
-        },
-              project: { // ✅ OBLIGATOIRE
+return await this.prisma.invoice.create({
+  data: {
+    ...data,
+    subTotal: 0,
+    taxTotal: 0,
+    total: 0,
+    balanceDue: 0,
+    discountTotal: 0,
+    reference,
+
+    contact: {
+      connect: { id: contactId },
+    },
+
+    ...(projectId && {
+      project: {
         connect: { id: projectId },
       },
-      },
-      include: {
-        contact: true,
-      },
-    });
+    }),
+  },
+  include: {
+    contact: true,
+    project: true,
+  },
+});
   }
 
   // ✅ FIND ALL
@@ -189,8 +197,7 @@ private mapInvoiceToTemplate(invoiceFromDB: any) {
     total: invoiceFromDB.total,
   };
 }
-async generatePdfById(id: number): Promise<Buffer> {
-
+async generatePdfById(id: number,language:string): Promise<Buffer> {
   const invoice = await this.prisma.invoice.findUnique({
     where: { id },
     include: {
@@ -209,35 +216,64 @@ async generatePdfById(id: number): Promise<Buffer> {
 
   const data = this.mapInvoiceToTemplate(invoice);
 
-  return this.generatePdf(data);
+  // langue du propriétaire de la facture
+
+  return this.generatePdf(data, language);
 }
-async generatePdf(data: any): Promise<Buffer> {
+async generatePdf(
+  data: any,
+  language: string,
+): Promise<Buffer> {
+
+  const templateName =
+    language === 'fr'
+      ? 'invoice-fr.hbs'
+      : 'invoice-en.hbs';
 
   const templatePath = path.join(
     process.cwd(),
-    'src/modules/invoice/templates/invoice.hbs' // ✅ changer ici
+    'src/modules/invoice/templates',
+    templateName,
   );
 
-  const templateHtml = fs.readFileSync(templatePath, 'utf-8');
-
+  const templateHtml = fs.readFileSync(templatePath, 'utf8');
   const template = handlebars.compile(templateHtml);
-
   const html = template(data);
 
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
+  let browser;
 
-  await page.setContent(html);
+  if (process.env.NODE_ENV === 'PROD') {
+    browser = await puppeteerCore.launch({
+      executablePath: await chromium.executablePath(),
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+      ],
+      headless: true,
+    });
+  } else {
+    browser = await puppeteer.launch({
+      headless: true,
+    });
+  }
 
-  const pdf = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-  });
+  try {
+    const page = await browser.newPage();
 
-  const pdfBuffer = Buffer.from(pdf);
+    await page.setContent(html, {
+      waitUntil: 'load',
+    });
 
-  await browser.close();
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+    });
 
-  return pdfBuffer;
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
 }
+
 }

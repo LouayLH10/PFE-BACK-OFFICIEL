@@ -4,6 +4,8 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
 import puppeteer from 'puppeteer';
+import puppeteerCore from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 @Injectable()
 export class DeliveryNoteService {
 
@@ -117,8 +119,7 @@ export class DeliveryNoteService {
     })),
   };
 }
-async generatePdfById(id: number): Promise<Buffer> {
-
+async generatePdfById(id: number,language:string): Promise<Buffer> {
   const dn = await this.prisma.deliveryNote.findUnique({
     where: { id },
     include: {
@@ -137,34 +138,65 @@ async generatePdfById(id: number): Promise<Buffer> {
 
   const data = this.mapDeliveryNoteToTemplate(dn);
 
-  return this.generatePdf(data);
+  // 🔥 récupérer la langue du propriétaire
+
+  return this.generatePdf(data, language);
 }
-async generatePdf(data: any): Promise<Buffer> {
+async generatePdf(
+  data: any,
+  language: string,
+): Promise<Buffer> {
+  const templateName =
+    language === 'fr'
+      ? 'delivery-note-fr.hbs'
+      : 'delivery-note-en.hbs';
+
   const templatePath = path.join(
     process.cwd(),
-    'src/modules/delivery-note/templates/delivery-note.hbs' // ✅ ici
+    'src/modules/delivery-note/templates',
+    templateName,
   );
 
-  const templateHtml = fs.readFileSync(templatePath, 'utf-8');
+  const templateHtml = fs.readFileSync(templatePath, 'utf8');
 
   const template = handlebars.compile(templateHtml);
-
   const html = template(data);
 
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
+  let browser;
 
-  await page.setContent(html);
+  if (process.env.NODE_ENV === 'PROD') {
+    // Render
+    browser = await puppeteerCore.launch({
+      executablePath: await chromium.executablePath(),
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+      ],
+      headless: true,
+    });
+  } else {
+    // Local
+    browser = await puppeteer.launch({
+      headless: true,
+    });
+  }
 
-  const pdf = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-  });
+  try {
+    const page = await browser.newPage();
 
-  const pdfBuffer = Buffer.from(pdf);
+    await page.setContent(html, {
+      waitUntil: 'load',
+    });
 
-  await browser.close();
+    const pdf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+    });
 
-  return pdfBuffer;
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
 }
 }

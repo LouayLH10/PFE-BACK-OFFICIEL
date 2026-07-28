@@ -6,7 +6,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
 import puppeteer from 'puppeteer';
-
+import puppeteerCore from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 @Injectable()
 export class PurchaseOrderService {
   constructor(private prisma: PrismaService) {}
@@ -28,7 +29,7 @@ export class PurchaseOrderService {
       nextNumber = lastNumber + 1;
     }
 
-    const reference = `PO-${year}-${String(nextNumber).padStart(4, '0')}`;
+    const reference = `SO-${year}-${String(nextNumber).padStart(4, '0')}`;
 
     return await this.prisma.purchaseOrder.create({
       data: {
@@ -151,52 +152,79 @@ export class PurchaseOrderService {
   }
 
   // ✅ PDF BY ID
-  async generatePdfById(id: number): Promise<Buffer> {
-    const po = await this.prisma.purchaseOrder.findUnique({
-      where: { id },
-      include: {
-        items: true,
-       contact: {
+async generatePdfById(id: number,language:string): Promise<Buffer> {
+  const po = await this.prisma.purchaseOrder.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      contact: {
         include: {
           user: true,
         },
       },
-      },
-    });
+    },
+  });
 
-    if (!po) throw new Error('Purchase Order not found');
-console.log(po)
-    const data = this.mapToTemplate(po);
-
-    return this.generatePdf(data);
+  if (!po) {
+    throw new Error('Purchase Order not found');
   }
 
-  // ✅ GENERATE PDF
-  async generatePdf(data: any): Promise<Buffer> {
-    const templatePath = path.join(
-      process.cwd(),
-      'src/modules/purchase-order/templates/purchase-order.hbs'
-    );
+  const data = this.mapToTemplate(po);
 
-    const htmlTemplate = fs.readFileSync(templatePath, 'utf-8');
 
-    const template = handlebars.compile(htmlTemplate);
-    const html = template(data);
+  return this.generatePdf(data, language);
+}
+async generatePdf(
+  data: any,
+  language: string,
+): Promise<Buffer> {
 
-    const browser = await puppeteer.launch();
+  const templatePath = path.join(
+    process.cwd(),
+    'src/modules/purchase-order/templates',
+    `purchase-order-${language}.hbs`,
+  );
+
+  const htmlTemplate = fs.readFileSync(templatePath, 'utf8');
+
+  const template = handlebars.compile(htmlTemplate);
+  const html = template(data);
+
+  let browser;
+
+  if (process.env.NODE_ENV === 'PROD') {
+    browser = await puppeteerCore.launch({
+      executablePath: await chromium.executablePath(),
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+      ],
+      headless: true,
+    });
+  } else {
+    browser = await puppeteer.launch({
+      headless: true,
+    });
+  }
+
+  try {
     const page = await browser.newPage();
 
-    await page.setContent(html);
+    await page.setContent(html, {
+      waitUntil: 'load',
+    });
 
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
     });
 
-    await browser.close();
-
     return Buffer.from(pdf);
+  } finally {
+    await browser.close();
   }
+}
 
   // ✅ CHANGE STATUS
   async changeStatus(id: number) {
