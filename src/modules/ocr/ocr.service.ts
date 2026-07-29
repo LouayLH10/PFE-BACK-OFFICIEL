@@ -8,17 +8,19 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 
 import * as Tesseract from 'tesseract.js';
-
 import * as fs from 'fs';
-
 import * as path from 'path';
+
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
 import { AiService } from '../IA/ai/ai.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { QuoteService } from '../quote/quote.service';
 import { ProjectService } from '../project/project.service';
 import { PurchaseOrderService } from '../purchase-order/purchase-order.service';
 
-const pdfPoppler = require('pdf-poppler');
+const execFileAsync = promisify(execFile);
 
 @Injectable()
 export class OcrService {
@@ -26,181 +28,200 @@ export class OcrService {
   constructor(
     private prisma: PrismaService,
     private aiService: AiService,
-    private invoiceService:InvoiceService,
-    private quoteService:QuoteService,
-    private projectService:ProjectService,
-    private orderService:PurchaseOrderService
+    private invoiceService: InvoiceService,
+    private quoteService: QuoteService,
+    private projectService: ProjectService,
+    private orderService: PurchaseOrderService,
   ) {}
 
   // =========================================
-  // 🔥 MAIN OCR
+  // MAIN OCR
   // =========================================
 
-async processDocument(
-  id: number,
-  documentType: string,
-  contactId:number
-) {
+  async processDocument(
+    id: number,
+    documentType: string,
+    contactId: number,
+  ) {
 
-  let pdfBuffer: Buffer;
-  let fileName = '';
+    let pdfBuffer: Buffer;
+    let fileName = '';
 
-  switch (documentType) {
+    switch (documentType) {
 
-    case 'invoice':
+      case 'invoice':
 
-      pdfBuffer =
-        await this.invoiceService
-          .generatePdfById(id,'en');
+        pdfBuffer =
+          await this.invoiceService
+            .generatePdfById(id, 'en');
 
-      fileName =
-        `invoice-${id}.pdf`;
+        fileName = `invoice-${id}.pdf`;
 
-      break;
+        break;
 
-    case 'quote':
+      case 'quote':
 
-      pdfBuffer =
-        await this.quoteService
-          .generatePdfById(id,"en");
+        pdfBuffer =
+          await this.quoteService
+            .generatePdfById(id, 'en');
 
-      fileName =
-        `quote-${id}.pdf`;
+        fileName = `quote-${id}.pdf`;
 
-      break;
+        break;
 
-    case 'project':
+      case 'project':
 
-      pdfBuffer =
-        await this.projectService
-          .generatePdfById(id,'en');
+        pdfBuffer =
+          await this.projectService
+            .generatePdfById(id, 'en');
 
-      fileName =
-        `project-${id}.pdf`;
+        fileName = `project-${id}.pdf`;
 
-      break;
+        break;
 
-    case 'purchase_order':
+      case 'purchase_order':
 
-      pdfBuffer =
-        await this.orderService
-          .generatePdfById(id,"en");
+        pdfBuffer =
+          await this.orderService
+            .generatePdfById(id, 'en');
 
-      fileName =
-        `purchase-order-${id}.pdf`;
+        fileName = `purchase-order-${id}.pdf`;
 
-      break;
+        break;
 
-    default:
+      default:
 
-      throw new BadRequestException(
-        'Unsupported document type',
-      );
+        throw new BadRequestException(
+          'Unsupported document type',
+        );
+    }
 
-  }
+    // =========================================
+    // SAVE PDF TEMPORARILY
+    // =========================================
 
-  const tempDir = path.join(
-    process.cwd(),
-    'uploads',
-  );
+    const tempDir = path.join(
+      process.cwd(),
+      'uploads',
+    );
 
-  const filePath = path.join(
-    tempDir,
-    fileName,
-  );
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, {
+        recursive: true,
+      });
+    }
 
-  fs.writeFileSync(
-    filePath,
-    pdfBuffer,
-  );
+    const filePath = path.join(
+      tempDir,
+      fileName,
+    );
 
-  const extractedText =
-    await this.extractPdfText(
+    fs.writeFileSync(
       filePath,
+      pdfBuffer,
     );
 
-  const aiSummary =
-    extractedText.substring(
-      0,
-      300,
-    );
+    // =========================================
+    // PDF → TEXT
+    // =========================================
 
-  const extractedJson =
-    await this.aiService
-      .extractDocument(
+    const extractedText =
+      await this.extractPdfText(filePath);
+
+    // =========================================
+    // AI ANALYSIS
+    // =========================================
+
+    const aiSummary =
+      extractedText.substring(0, 300);
+
+    const extractedJson =
+      await this.aiService.extractDocument(
         extractedText,
         documentType,
       );
 
-  const aiInsights =
-    await this.aiService
-      .generateInsights(
+    const aiInsights =
+      await this.aiService.generateInsights(
         extractedJson,
         documentType,
       );
 
-  const confidenceScore =
-    this.aiService
-      .calculateConfidence(
+    const confidenceScore =
+      this.aiService.calculateConfidence(
         extractedJson,
       );
-const executiveReport =
-  await this.aiService.generateExecutiveReport(
-    extractedJson,
-    aiInsights,
-    documentType,
-  );
-  const document =
-  await this.prisma.ocrDocument.create({
-  data: {
-    fileName,
-    originalName: fileName,
-    mimeType: 'application/pdf',
-    fileUrl: `/uploads/${fileName}`,
 
-    documentType,
+    const executiveReport =
+      await this.aiService.generateExecutiveReport(
+        extractedJson,
+        aiInsights,
+        documentType,
+      );
 
-    extractedText,
-    aiSummary,
-    extractedJson,
-    aiInsights,
-   aiExecutiveReport:executiveReport,
-    contactId,
+    // =========================================
+    // SAVE OCR DOCUMENT
+    // =========================================
 
-    confidenceScore,
+    const document =
+      await this.prisma.ocrDocument.create({
 
-    status: 'COMPLETED',
+        data: {
 
-    invoiceId:
-      documentType === 'invoice'
-        ? id
-        : null,
+          fileName,
 
-    quoteId:
-      documentType === 'quote'
-        ? id
-        : null,
+          originalName: fileName,
 
-    projectId:
-      documentType === 'project'
-        ? id
-        : null,
+          mimeType: 'application/pdf',
 
+          fileUrl: `/uploads/${fileName}`,
 
-  },
-});
+          documentType,
 
-  return document;
+          extractedText,
 
-}
+          aiSummary,
+
+          extractedJson,
+
+          aiInsights,
+
+          aiExecutiveReport:
+            executiveReport,
+
+          contactId,
+
+          confidenceScore,
+
+          status: 'COMPLETED',
+
+          invoiceId:
+            documentType === 'invoice'
+              ? id
+              : null,
+
+          quoteId:
+            documentType === 'quote'
+              ? id
+              : null,
+
+          projectId:
+            documentType === 'project'
+              ? id
+              : null,
+        },
+      });
+
+    return document;
+  }
 
   // =========================================
-  // 🔥 PDF → IMAGE → OCR
+  // PDF → IMAGE → OCR
   // =========================================
 
   async extractPdfText(
     pdfPath: string,
-  ) {
+  ): Promise<string> {
 
     const outputDir =
       path.join(
@@ -209,10 +230,11 @@ const executiveReport =
         'ocr-temp',
       );
 
-    // 🔥 create folder
-    if (
-      !fs.existsSync(outputDir)
-    ) {
+    // =========================================
+    // CREATE TEMP DIRECTORY
+    // =========================================
+
+    if (!fs.existsSync(outputDir)) {
 
       fs.mkdirSync(outputDir, {
         recursive: true,
@@ -220,196 +242,313 @@ const executiveReport =
 
     }
 
-    // =========================================
-    // 🔥 CONVERT PDF TO PNG
-    // =========================================
+    const prefix =
+      `pdf-${Date.now()}`;
 
-    const opts = {
+    try {
 
-      format: 'png',
+      // =========================================
+      // PDF → PNG
+      // =========================================
 
-      out_dir: outputDir,
+      if (process.env.NODE_ENV === 'production') {
 
-      out_prefix:
-        `pdf-${Date.now()}`,
+        // =========================================
+        // PRODUCTION / RENDER
+        // Linux
+        // Uses pdftoppm from poppler-utils
+        // =========================================
 
-      page: null,
+        console.log(
+          '🐧 Production environment detected: using pdftoppm',
+        );
+
+        const outputPrefix =
+          path.join(
+            outputDir,
+            prefix,
+          );
+
+        await execFileAsync(
+          'pdftoppm',
+          [
+            '-png',
+            '-r',
+            '150',
+            pdfPath,
+            outputPrefix,
+          ],
+        );
+
+      } else {
+
+        // =========================================
+        // LOCAL DEVELOPMENT
+        // Windows
+        // Uses pdf-poppler
+        // =========================================
+
+        console.log(
+          '🪟 Development environment detected: using pdf-poppler',
+        );
+
+        // IMPORTANT:
+        // pdf-poppler is loaded ONLY locally.
+        // It must not be required at the top of the file.
+
+        const pdfPoppler =
+          require('pdf-poppler');
+
+        const opts = {
+
+          format: 'png',
+
+          out_dir: outputDir,
+
+          out_prefix: prefix,
+
+          page: null,
+
+        };
+
+        await pdfPoppler.convert(
+          pdfPath,
+          opts,
+        );
+      }
+
+      // =========================================
+      // GET GENERATED IMAGES
+      // =========================================
+
+      const files =
+        fs.readdirSync(outputDir);
+
+      const imageFiles =
+        files
+          .filter(
+            (file) =>
+              file.startsWith(prefix) &&
+              file.endsWith('.png'),
+          )
+          .sort();
+
+      if (imageFiles.length === 0) {
+
+        throw new Error(
+          'No PNG images were generated from the PDF.',
+        );
+
+      }
+
+      // =========================================
+      // OCR EACH PAGE
+      // =========================================
+
+      let fullText = '';
+
+      for (
+        const image of imageFiles
+      ) {
+
+        const imagePath =
+          path.join(
+            outputDir,
+            image,
+          );
+
+        console.log(
+          `🔎 OCR processing: ${image}`,
+        );
+
+        const result =
+          await Tesseract.recognize(
+            imagePath,
+            'eng',
+          );
+
+        fullText +=
+          '\n' +
+          result.data.text;
+      }
+
+      return fullText.trim();
+
+    } finally {
+
+      // =========================================
+      // CLEAN TEMP PNG FILES
+      // =========================================
+
+      if (fs.existsSync(outputDir)) {
+
+        const files =
+          fs.readdirSync(outputDir);
+
+        for (
+          const file of files
+        ) {
+
+          if (
+            file.startsWith(prefix) &&
+            file.endsWith('.png')
+          ) {
+
+            try {
+
+              fs.unlinkSync(
+                path.join(
+                  outputDir,
+                  file,
+                ),
+              );
+
+            } catch (error) {
+
+              console.error(
+                `Unable to delete temporary file: ${file}`,
+                error,
+              );
+
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // =========================================
+  // EXTRACT INVOICE DATA
+  // =========================================
+
+  extractInvoiceData(text: string) {
+
+    const invoiceNumber =
+      text.match(
+        /INV-\d{4}-\d+/,
+      )?.[0];
+
+    const date =
+      text.match(
+        /\d{2}\/\d{2}\/\d{4}/,
+      )?.[0];
+
+    const email =
+      text.match(
+        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/,
+      )?.[0];
+
+    const total =
+      text.match(
+        /Total\s+(\d+)/i,
+      )?.[1];
+
+    const subtotal =
+      text.match(
+        /Sub Total\s+(\d+)/i,
+      )?.[1];
+
+    const tax =
+      text.match(
+        /TVA.*?(\d+)/i,
+      )?.[1];
+
+    return {
+
+      invoiceNumber,
+
+      date,
+
+      email,
+
+      subtotal:
+        subtotal
+          ? Number(subtotal)
+          : null,
+
+      tax:
+        tax
+          ? Number(tax)
+          : null,
+
+      total:
+        total
+          ? Number(total)
+          : null,
+    };
+  }
+
+  // =========================================
+  // FIND DOCUMENTS BY USER
+  // =========================================
+
+  async findByUser(
+    userId: number,
+  ) {
+
+    return await this.prisma.ocrDocument.findMany({
+
+      where: {
+
+        contact: {
+          userId,
+        },
+
+      },
+
+      orderBy: {
+        createdAt: 'desc',
+      },
+
+    });
+  }
+
+  // =========================================
+  // VERIFY DOCUMENT EXISTENCE
+  // =========================================
+
+  async verifyExistence(
+    id: number,
+    documentType: string,
+  ) {
+
+    const document =
+      await this.prisma.ocrDocument.findFirst({
+
+        where: {
+
+          documentType,
+
+          ...(documentType === 'invoice' && {
+            invoiceId: id,
+          }),
+
+          ...(documentType === 'quote' && {
+            quoteId: id,
+          }),
+
+          ...(documentType === 'project' && {
+            projectId: id,
+          }),
+
+          ...(documentType === 'purchaseOrder' && {
+            purchaseOrderId: id,
+          }),
+
+          ...(documentType === 'deliveryNote' && {
+            deliveryNoteId: id,
+          }),
+
+        },
+
+      });
+
+    return {
+
+      analyzed: !!document,
+
+      document,
 
     };
-
-    await pdfPoppler.convert(
-      pdfPath,
-      opts,
-    );
-
-    // =========================================
-    // 🔥 GET GENERATED IMAGES
-    // =========================================
-
-    const files =
-      fs.readdirSync(outputDir);
-
-    const imageFiles =
-      files.filter((f) =>
-        f.endsWith('.png'),
-      );
-
-    let fullText = '';
-
-    // =========================================
-    // 🔥 OCR EACH PAGE
-    // =========================================
-
-    for (
-      const image of imageFiles
-    ) {
-
-      const imagePath =
-        path.join(
-          outputDir,
-          image,
-        );
-
-      const result =
-        await Tesseract.recognize(
-          imagePath,
-          'eng',
-        );
-
-      fullText +=
-        '\n' +
-        result.data.text;
-
-    }
-
-    // =========================================
-    // 🔥 CLEAN TEMP FILES
-    // =========================================
-
-    for (
-      const image of imageFiles
-    ) {
-
-      fs.unlinkSync(
-        path.join(
-          outputDir,
-          image,
-        ),
-      );
-
-    }
-
-    return fullText;
-
   }
-extractInvoiceData(text: string) {
-
-  const invoiceNumber =
-    text.match(/INV-\d{4}-\d+/)?.[0];
-
-  const date =
-    text.match(
-      /\d{2}\/\d{2}\/\d{4}/,
-    )?.[0];
-
-  const email =
-    text.match(
-      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/
-    )?.[0];
-
-  const total =
-    text.match(
-      /Total\s+(\d+)/i,
-    )?.[1];
-
-  const subtotal =
-    text.match(
-      /Sub Total\s+(\d+)/i,
-    )?.[1];
-
-  const tax =
-    text.match(
-      /TVA.*?(\d+)/i,
-    )?.[1];
-
-  return {
-
-    invoiceNumber,
-
-    date,
-
-    email,
-
-    subtotal:
-      subtotal
-        ? Number(subtotal)
-        : null,
-
-    tax:
-      tax
-        ? Number(tax)
-        : null,
-
-    total:
-      total
-        ? Number(total)
-        : null,
-
-  };
-
-}
-async findByUser(userId: number) {
-
-  return await this.prisma.ocrDocument.findMany({
-
-    where: {
-    contact: {
-              userId,
-            },
-  
-    },
-
-    orderBy: {
-      createdAt: 'desc',
-    },
-
-  });
-
-}
- async verifyExistence(
-  id: number,
-  documentType: string,
-) {
-  const document =
-    await this.prisma.ocrDocument.findFirst({
-      where: {
-        documentType,
-
-        ...(documentType === 'invoice' && {
-          invoiceId: id,
-        }),
-
-        ...(documentType === 'quote' && {
-          quoteId: id,
-        }),
-
-        ...(documentType === 'project' && {
-          projectId: id,
-        }),
-
-        ...(documentType === 'purchaseOrder' && {
-          purchaseOrderId: id,
-        }),
-
-        ...(documentType === 'deliveryNote' && {
-          deliveryNoteId: id,
-        }),
-      },
-    });
-
-  return {
-    analyzed: !!document,
-    document,
-  };
-}
 }
