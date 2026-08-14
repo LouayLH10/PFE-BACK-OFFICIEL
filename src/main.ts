@@ -6,7 +6,8 @@ import { join } from 'path';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
     app.enableCors({
-    origin: "http://localhost:3000",
+    origin:process.env.NODE_ENV === 'PROD'?"https://pfe-front-officiel.vercel.app": "http://localhost:3000",
+
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
   });
