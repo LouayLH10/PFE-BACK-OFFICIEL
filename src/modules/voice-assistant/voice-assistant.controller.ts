@@ -29,7 +29,9 @@ async audio(
   @Req() req,
   @Res() res,
 ) {
-console.log(req)
+
+  console.log('FILE:', file);
+  console.log('USER:', req.user);
   const text = await this.aiService.speechToText(file);
 
   const pdf = await this.voiceAssistantService.simulate(
