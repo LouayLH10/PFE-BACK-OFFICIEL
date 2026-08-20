@@ -12,23 +12,4 @@ export class DelivrableController {
     return this.delivrableService.create(createDelivrableDto);
   }
 
-  @Get()
-  findAll() {
-    return this.delivrableService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.delivrableService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDelivrableDto: UpdateDelivrableDto) {
-    return this.delivrableService.update(+id, updateDelivrableDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.delivrableService.remove(+id);
-  }
 }

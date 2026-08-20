@@ -16,15 +16,7 @@ async function main() {
   // CATEGORY
   // ===================================================
 
-  const hardware = await prisma.category.upsert({
-    where: {
-      name: "Hardware",
-    },
-    update: {},
-    create: {
-      name: "Hardware",
-    },
-  });
+
 
   console.log("✅ Category inserted");
 
@@ -139,11 +131,7 @@ async function main() {
         stock: product.stock,
         unit: product.unit,
         taxRate: product.taxRate,
-        category: {
-          connect: {
-            id: hardware.id,
-          },
-        },
+
       },
     });
   }
