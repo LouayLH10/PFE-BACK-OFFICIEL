@@ -610,30 +610,55 @@ Rules:
   // qui réalise la transcription vocale.
   // ============================================================
 
-  async speechToText(
-    file: Express.Multer.File,
-  ): Promise<string> {
+ async speechToText(
+  file: Express.Multer.File,
+): Promise<string> {
 
-    const formData = new FormData();
+  console.log('1. File received:', {
+    name: file.originalname,
+    type: file.mimetype,
+    size: file.size,
+  });
 
-    formData.append(
-      'audio',
-      file.buffer,
-      {
-        filename: file.originalname,
-        contentType: file.mimetype,
-      },
-    );
+  const formData = new FormData();
 
+  formData.append('audio', file.buffer, {
+    filename: file.originalname,
+    contentType: file.mimetype,
+  });
+
+  console.log('2. Sending file to Flask...');
+
+  try {
     const response = await axios.post(
       'http://127.0.0.1:5000/transcribe',
       formData,
       {
         headers: formData.getHeaders(),
         maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 300000,
       },
     );
 
+    console.log('3. Flask response:', response.status);
+    console.log('4. Flask data:', response.data);
+
     return response.data.text;
+
+  } catch (error) {
+
+    console.error('FLASK ERROR');
+
+    if (axios.isAxiosError(error)) {
+      console.error('Status:', error.response?.status);
+      console.error('Data:', error.response?.data);
+      console.error('Message:', error.message);
+    } else {
+      console.error(error);
+    }
+
+    throw error;
   }
+}
 }

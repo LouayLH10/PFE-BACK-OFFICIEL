@@ -17,7 +17,7 @@ async function bootstrap() {
       join(process.cwd(), 'uploads'),
     ),
   );
-    const port = process.env.PORT || 3000;
+    const port = process.env.PORT || 3200;
 
   await app.listen(port, '0.0.0.0');
 
