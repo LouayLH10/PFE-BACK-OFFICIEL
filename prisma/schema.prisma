@@ -103,35 +103,31 @@ model Invoice {
 }
 
 model Product {
+  id Int @id @default(autoincrement())
 
-  id            Int      @id @default(autoincrement())
+  reference String @unique
 
-  reference     String   @unique
+  name String
 
-  name          String
+  description String?
 
-  description   String?
+  unitPrice Float
 
-  unitPrice     Float
+  stock Int
 
-  stock         Int
+  unit Unit
 
-  unit          Unit
+  taxRate Float
 
-  taxRate       Float
-
-  active        Boolean @default(true)
-
-  categoryId    Int
-
-  category      Category @relation(fields:[categoryId],references:[id])
+  active Boolean @default(true)
 
   translations  ProductTranslation[]
   invoiceLignes InvoiceLigne[]
-  createdAt     DateTime @default(now())
+  createdAt     DateTime             @default(now())
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 }
+
 enum Unit {
   PIECE
   SERVICE
@@ -139,15 +135,6 @@ enum Unit {
   LITRE
   METER
   PACK
-}
-
-model Category {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  description String?
-  products    Product[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
 }
 
 enum InvoiceStatus {
@@ -169,25 +156,27 @@ model InvoiceLigne {
   product     Product? @relation(fields: [productId], references: [id])
   productId   Int?
 }
+
 model ProductTranslation {
-  id         Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  language   String
+  language String
 
-  name       String
+  name String
 
   description String?
 
-  productId  Int
+  productId Int
 
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  updatedAt  DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([productId, language])
 }
+
 model PurchaseOrder {
   id        Int    @id @default(autoincrement())
   reference String @unique

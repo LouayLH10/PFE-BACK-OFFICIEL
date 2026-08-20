@@ -1,17 +1,30 @@
 import { Injectable } from '@nestjs/common';
+
 import axios from 'axios';
-import * as fs from "fs";
-import FormData from "form-data";
-import OpenAI from "openai";
-import * as os from "os";
-import * as path from "path";
+import FormData from 'form-data';
+import OpenAI from 'openai';
+
 
 @Injectable()
 export class AiService {
-private openai = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-});
+
+  // ============================================================
+  // 1. CONFIGURATION DU SERVICE IA
+  // ============================================================
+
+  private openai = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+  });
+
+
+  // ============================================================
+  // 2. EXTRACTION DES DONNÉES D'UN DOCUMENT ERP
+  // ============================================================
+  // Utilise Ollama + Qwen pour transformer le texte OCR
+  // en données structurées JSON.
+  // ============================================================
+
   async extractDocument(
     text: string,
     documentType: string,
@@ -28,19 +41,17 @@ Extract all useful information.
 Return ONLY valid JSON.
 
 OCR TEXT:
-
 ${text}
 `;
 
-    const response =
-      await axios.post(
-        'http://localhost:11434/api/generate',
-        {
-          model: 'qwen3:8b',
-          prompt,
-          stream: false,
-        },
-      );
+    const response = await axios.post(
+      'http://localhost:11434/api/generate',
+      {
+        model: 'qwen3:8b',
+        prompt,
+        stream: false,
+      },
+    );
 
     try {
 
@@ -50,34 +61,56 @@ ${text}
 
     } catch {
 
+      // Retourne la réponse brute si le modèle
+      // ne retourne pas un JSON valide
       return {
-        raw:
-          response.data.response,
+        raw: response.data.response,
       };
-
     }
-
   }
-async testOllama() {
-  const response = await axios.post(
-    'http://localhost:11434/api/generate',
-    {
-     model: 'qwen2.5:3b',
-      prompt: 'Hello',
-      stream: false,
-    },
-  );
 
-  console.log(response.data);
 
-  return response.data;
-}
-async generateInsights(
-  extractedJson: any,
-  documentType: string,
-) {
+  // ============================================================
+  // 3. TEST DE LA CONNEXION AVEC OLLAMA
+  // ============================================================
+  // Permet de vérifier que le serveur Ollama
+  // et le modèle sont accessibles.
+  // ============================================================
 
-const prompt = `
+  async testOllama() {
+
+    const response = await axios.post(
+      'http://localhost:11434/api/generate',
+      {
+        model: 'qwen2.5:3b',
+        prompt: 'Hello',
+        stream: false,
+      },
+    );
+
+    console.log(response.data);
+
+    return response.data;
+  }
+
+
+  // ============================================================
+  // 4. ANALYSE INTELLIGENTE DU DOCUMENT
+  // ============================================================
+  // Analyse les données extraites par OCR + IA
+  // afin d'identifier :
+  // - les risques
+  // - les recommandations
+  // - le niveau de priorité
+  // - les informations financières
+  // ============================================================
+
+  async generateInsights(
+    extractedJson: any,
+    documentType: string,
+  ) {
+
+    const prompt = `
 You are an expert ERP, Finance and Project Management analyst.
 
 Your role is to analyze ERP documents extracted from OCR and provide business insights.
@@ -91,10 +124,15 @@ ${JSON.stringify(extractedJson, null, 2)}
 Instructions:
 
 1. Analyze the extracted document.
+
 2. Identify financial, operational, and business risks.
+
 3. Generate useful recommendations for the client viewing the document.
+
 4. Determine a risk percentage from 0 to 100.
+
 5. Determine the priority:
+
    - LOW
    - MEDIUM
    - HIGH
@@ -130,15 +168,19 @@ Expected JSON:
 
 {
   "summary": "Short business summary",
+
   "risks": [
     "risk 1",
     "risk 2"
   ],
+
   "risk_percentage": 25,
+
   "recommendations": [
     "recommendation 1",
     "recommendation 2"
   ],
+
   "financial_analysis": {
     "subtotal": 0,
     "tax": 0,
@@ -146,161 +188,193 @@ Expected JSON:
     "currency": "TND",
     "payment_risk": "LOW"
   },
+
   "priority": "LOW"
 }
 `;
 
-  const response = await axios.post(
-    'http://localhost:11434/api/generate',
-    {
-      model: 'qwen2.5:3b',
-      prompt,
-      stream: false,
-    },
-    {
-      timeout: 300000,
-    },
-  );
-
-  try {
-
-    return JSON.parse(
-      response.data.response,
+    const response = await axios.post(
+      'http://localhost:11434/api/generate',
+      {
+        model: 'qwen2.5:3b',
+        prompt,
+        stream: false,
+      },
+      {
+        timeout: 300000,
+      },
     );
 
-  } catch (error) {
+    try {
 
-    console.log(
-      'OLLAMA RAW RESPONSE:',
-      response.data.response,
-    );
-
-    return {
-      summary:
+      return JSON.parse(
         response.data.response,
-      risks: [],
-      recommendations: [],
-      financial_analysis: {},
-      priority: 'LOW',
-    };
+      );
 
+    } catch {
+
+      // Valeurs par défaut si le modèle
+      // retourne une réponse non JSON
+      console.log(
+        'OLLAMA RAW RESPONSE:',
+        response.data.response,
+      );
+
+      return {
+        summary: response.data.response,
+        risks: [],
+        recommendations: [],
+        financial_analysis: {},
+        priority: 'LOW',
+      };
+    }
   }
 
-}
-calculateConfidence(
-  extractedJson: any,
-): number {
 
-  let score = 0;
+  // ============================================================
+  // 5. CALCUL DU SCORE DE CONFIANCE OCR / IA
+  // ============================================================
+  // Évalue la qualité des données extraites
+  // à partir des champs correctement identifiés.
+  // ============================================================
 
-  // ========================
-  // Document identifié
-  // ========================
+  calculateConfidence(
+    extractedJson: any,
+  ): number {
 
-  if (
-    extractedJson.document_type
+    let score = 0;
+
+
+    // ------------------------------------------------------------
+    // 5.1 Document identifié
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.document_type
+    ) {
+      score += 15;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.2 Référence / numéro du document
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.document_number
+    ) {
+      score += 15;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.3 Date du document
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.date
+    ) {
+      score += 15;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.4 Client ou fournisseur
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.client ||
+      extractedJson.supplier
+    ) {
+      score += 15;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.5 Adresse email
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.client?.email ||
+      extractedJson.supplier?.email
+    ) {
+      score += 10;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.6 Montants financiers
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.total ||
+      extractedJson.subtotal
+    ) {
+      score += 10;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.7 Lignes / produits
+    // ------------------------------------------------------------
+
+    if (
+      extractedJson.items &&
+      Array.isArray(
+        extractedJson.items,
+      ) &&
+      extractedJson.items.length > 0
+    ) {
+      score += 10;
+    }
+
+
+    // ------------------------------------------------------------
+    // 5.8 Nombre de champs remplis
+    // ------------------------------------------------------------
+
+    const filledFields =
+      Object.values(
+        extractedJson,
+      ).filter(
+        (value) =>
+          value !== null &&
+          value !== undefined &&
+          value !== '',
+      ).length;
+
+    score += Math.min(
+      filledFields,
+      10,
+    );
+
+
+    // ------------------------------------------------------------
+    // 5.9 Limitation du score à 100
+    // ------------------------------------------------------------
+
+    return Math.min(
+      Math.round(score),
+      100,
+    );
+  }
+
+
+  // ============================================================
+  // 6. EXTRACTION DES PRODUITS DEPUIS UNE COMMANDE VOCALE
+  // ============================================================
+  // Analyse le texte provenant du Speech-to-Text
+  // et identifie les produits et quantités demandés.
+  // ============================================================
+
+  async extractProducts(
+    text: string,
+    model = 'qwen2.5:3b',
   ) {
-    score += 15;
-  }
 
-  // ========================
-  // Référence
-  // ========================
+    console.log('text =', text);
 
-  if (
-    extractedJson.document_number
-  ) {
-    score += 15;
-  }
-
-  // ========================
-  // Date
-  // ========================
-
-  if (
-    extractedJson.date
-  ) {
-    score += 15;
-  }
-
-  // ========================
-  // Client / fournisseur
-  // ========================
-
-  if (
-    extractedJson.client ||
-    extractedJson.supplier
-  ) {
-    score += 15;
-  }
-
-  // ========================
-  // Email
-  // ========================
-
-  if (
-    extractedJson.client?.email ||
-    extractedJson.supplier?.email
-  ) {
-    score += 10;
-  }
-
-  // ========================
-  // Montants
-  // ========================
-
-  if (
-    extractedJson.total ||
-    extractedJson.subtotal
-  ) {
-    score += 10;
-  }
-
-  // ========================
-  // Lignes / items
-  // ========================
-
-  if (
-    extractedJson.items &&
-    Array.isArray(
-      extractedJson.items,
-    ) &&
-    extractedJson.items.length > 0
-  ) {
-    score += 10;
-  }
-
-  // ========================
-  // Champs remplis
-  // ========================
-
-  const filledFields =
-    Object.values(
-      extractedJson,
-    ).filter(
-      (v) =>
-        v !== null &&
-        v !== undefined &&
-        v !== '',
-    ).length;
-
-  score += Math.min(
-    filledFields,
-    10,
-  );
-
-  return Math.min(
-    Math.round(score),
-    100,
-  );
-
-}
-async extractProducts(
-  text: string,
-  model =  "qwen2.5:3b",
-) {
-console.log("text =",text)
-const prompt = `
+    const prompt = `
 You are an ERP Voice Assistant.
 
 The customer is speaking to request a quotation or an invoice.
@@ -355,9 +429,11 @@ Product extraction rules:
 Examples:
 
 Input:
+
 I want 2 HP ProBook laptops, 5 wireless mice and 2 Dell monitors.
 
 Output:
+
 {
   "language":"en",
   "products":[
@@ -377,9 +453,11 @@ Output:
 }
 
 Input:
+
 Je veux deux ordinateurs HP ProBook, cinq souris sans fil et deux écrans Dell.
 
 Output:
+
 {
   "language":"fr",
   "products":[
@@ -399,9 +477,11 @@ Output:
 }
 
 Input:
+
 Je veux deux écrondelles.
 
 Output:
+
 {
   "language":"fr",
   "products":[
@@ -413,9 +493,11 @@ Output:
 }
 
 Input:
+
 Je veux cinq souris sont filles.
 
 Output:
+
 {
   "language":"fr",
   "products":[
@@ -427,9 +509,11 @@ Output:
 }
 
 Input:
+
 I need three logitèque wireless mice.
 
 Output:
+
 {
   "language":"en",
   "products":[
@@ -445,29 +529,39 @@ Customer request:
 ${text}
 `;
 
-  const response = await axios.post(
-    'http://localhost:11434/api/generate',
-    {
-      model,
-      prompt,
-      stream: false,
-    },
-    {
-      timeout: 300000,
-    },
-  );
+    const response = await axios.post(
+      'http://localhost:11434/api/generate',
+      {
+        model,
+        prompt,
+        stream: false,
+      },
+      {
+        timeout: 300000,
+      },
+    );
 
-  const result = response.data.response.trim();
+    const result =
+      response.data.response.trim();
 
-  return JSON.parse(result);
-}
-async generateExecutiveReport(
-  extractedJson: any,
-  aiInsights: any,
-  documentType: string,
-) {
+    return JSON.parse(result);
+  }
 
-  const prompt = `
+
+  // ============================================================
+  // 7. GÉNÉRATION DU RAPPORT EXÉCUTIF
+  // ============================================================
+  // Génère un résumé professionnel destiné au client
+  // à partir des données extraites et des insights IA.
+  // ============================================================
+
+  async generateExecutiveReport(
+    extractedJson: any,
+    aiInsights: any,
+    documentType: string,
+  ) {
+
+    const prompt = `
 You are a senior ERP consultant.
 
 Create a professional Executive Report for the client.
@@ -482,52 +576,64 @@ AI Insights:
 ${JSON.stringify(aiInsights)}
 
 Rules:
+
 - Write in professional business English.
 - Maximum 250 words.
 - Explain the document.
-- Highlight important financial information if the docment is invoice.
+- Highlight important financial information if the document is invoice.
 - Mention risks if any.
 - Mention recommendations.
 - Do not use markdown.
 - Return only plain text.
 `;
 
-  const response = await axios.post(
-    'http://localhost:11434/api/generate',
-    {
-      model: 'qwen3:8b',
-      prompt,
-      stream: false,
-    },
-    {
-      timeout: 300000,
-    },
-  );
+    const response = await axios.post(
+      'http://localhost:11434/api/generate',
+      {
+        model: 'qwen3:8b',
+        prompt,
+        stream: false,
+      },
+      {
+        timeout: 300000,
+      },
+    );
 
-  return response.data.response;
-}
+    return response.data.response;
+  }
 
-async speechToText(file: Express.Multer.File): Promise<string> {
-  const formData = new FormData();
 
-  formData.append(
-    "audio",
-    file.buffer,
-    {
-      filename: file.originalname,
-      contentType: file.mimetype,
-    },
-  );
+  // ============================================================
+  // 8. SPEECH-TO-TEXT
+  // ============================================================
+  // Envoie le fichier audio au service Python
+  // qui réalise la transcription vocale.
+  // ============================================================
 
-  const response = await axios.post(
-    "http://127.0.0.1:5000/transcribe",
-    formData,
-    {
-      headers: formData.getHeaders(),
-      maxBodyLength: Infinity,
-    },
-  );
+  async speechToText(
+    file: Express.Multer.File,
+  ): Promise<string> {
 
-  return response.data.text;
-}
+    const formData = new FormData();
+
+    formData.append(
+      'audio',
+      file.buffer,
+      {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      },
+    );
+
+    const response = await axios.post(
+      'http://127.0.0.1:5000/transcribe',
+      formData,
+      {
+        headers: formData.getHeaders(),
+        maxBodyLength: Infinity,
+      },
+    );
+
+    return response.data.text;
+  }
 }

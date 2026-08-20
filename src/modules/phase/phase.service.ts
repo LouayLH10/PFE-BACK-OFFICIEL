@@ -1,13 +1,18 @@
 import { Injectable } from '@nestjs/common';
+
+import { PrismaService } from 'src/prisma/prisma.service';
+
 import { CreatePhaseDto } from './dto/create-phase.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class PhaseService {
   constructor(private prisma: PrismaService) {}
 
-  // ✅ CREATE
+  // =========================================
+  // CREATE
+  // =========================================
+
   async create(dto: CreatePhaseDto) {
     const { projectId, startDate, endDate, ...rest } = dto;
 
@@ -24,33 +29,46 @@ export class PhaseService {
         }),
 
         project: {
-          connect: { id: projectId },
+          connect: {
+            id: projectId,
+          },
         },
       },
+
       include: {
         project: true,
-        deliverables: true, // 🔥 relation
+        deliverables: true,
       },
     });
   }
 
-  // ✅ FIND ALL
+  // =========================================
+  // FIND ALL
+  // =========================================
+
   async findAll() {
     return await this.prisma.phase.findMany({
       include: {
         project: true,
         deliverables: true,
       },
+
       orderBy: {
-        id: 'desc', // ✅ safe (évite erreur createdAt)
+        id: 'desc',
       },
     });
   }
 
-  // ✅ FIND ONE
+  // =========================================
+  // FIND ONE
+  // =========================================
+
   async findOne(id: number) {
     return await this.prisma.phase.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
+
       include: {
         project: true,
         deliverables: true,
@@ -58,12 +76,18 @@ export class PhaseService {
     });
   }
 
-  // ✅ UPDATE
+  // =========================================
+  // UPDATE
+  // =========================================
+
   async update(id: number, dto: UpdatePhaseDto) {
     const { projectId, startDate, endDate, ...rest } = dto;
 
     return await this.prisma.phase.update({
-      where: { id },
+      where: {
+        id,
+      },
+
       data: {
         ...rest,
 
@@ -77,10 +101,13 @@ export class PhaseService {
 
         ...(projectId && {
           project: {
-            connect: { id: projectId },
+            connect: {
+              id: projectId,
+            },
           },
         }),
       },
+
       include: {
         project: true,
         deliverables: true,
@@ -88,22 +115,32 @@ export class PhaseService {
     });
   }
 
-  // ✅ DELETE
+  // =========================================
+  // DELETE
+  // =========================================
+
   async remove(id: number) {
     return await this.prisma.phase.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
   }
 
-  // ✅ BONUS : phases par project
+  // =========================================
+  // FIND BY PROJECT
+  // =========================================
+
   async findByProject(projectId: number) {
     return await this.prisma.phase.findMany({
       where: {
         projectId,
       },
+
       include: {
         deliverables: true,
       },
+
       orderBy: {
         id: 'asc',
       },

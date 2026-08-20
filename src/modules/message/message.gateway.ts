@@ -15,34 +15,66 @@ import { Server, Socket } from 'socket.io';
     origin: '*',
   },
 })
-
 export class MessageGateway {
+
+  // =========================================
+  // WEBSOCKET SERVER
+  // =========================================
 
   @WebSocketServer()
   server!: Server;
 
-  // 🔥 user rejoint sa room
+
+  // =========================================
+  // GESTION DE LA CONNEXION À UNE ROOM
+  // =========================================
+
+  /**
+   * Permet à un utilisateur de rejoindre
+   * une room WebSocket dédiée.
+   *
+   * Exemple :
+   * userId = 5 → room "user-5"
+   */
   @SubscribeMessage('join')
   handleJoin(
     @ConnectedSocket() client: Socket,
     @MessageBody() userId: number,
   ) {
 
-    // room user-1 user-2 ...
+    // Chaque utilisateur possède sa propre room
     client.join(`user-${userId}`);
 
     console.log(`User ${userId} joined room`);
   }
 
-  // 🔥 envoyer message temps réel
+
+  // =========================================
+  // ENVOI DU MESSAGE EN TEMPS RÉEL
+  // =========================================
+
+  /**
+   * Diffuse le message aux deux utilisateurs
+   * concernés par la conversation :
+   *
+   * - le destinataire
+   * - l'expéditeur
+   */
   sendMessage(message: any) {
 
-    // 🔵 envoyer au receiver
+    // -----------------------------------------
+    // Envoi au destinataire
+    // -----------------------------------------
+
     this.server
       .to(`user-${message.receiverId}`)
       .emit('newMessage', message);
 
-    // 🟢 envoyer aussi au sender
+
+    // -----------------------------------------
+    // Envoi à l'expéditeur
+    // -----------------------------------------
+
     this.server
       .to(`user-${message.senderId}`)
       .emit('newMessage', message);

@@ -1,21 +1,30 @@
 import { Injectable } from '@nestjs/common';
+
 import { PrismaService } from 'src/prisma/prisma.service';
+
 import { CreatePurchaseOrderligneDto } from './dto/create-purchase-orderligne.dto';
 import { UpdatePurchaseOrderligneDto } from './dto/update-purchase-orderligne.dto';
 
 @Injectable()
 export class PurchaseOrderligneService {
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(private prisma: PrismaService) {}
+  // =========================================================
+  // CREATE
+  // =========================================================
 
-  // ✅ CREATE
   async create(dto: CreatePurchaseOrderligneDto) {
+    // 1. Calcul du prix HT
+    const totalPriceWithoutTVA =
+      dto.quantity * dto.unitPrice;
 
-    const totalPriceWithoutTVA = dto.quantity * dto.unitPrice;
-    const totalPrice = totalPriceWithoutTVA + (totalPriceWithoutTVA * dto.tva / 100);
+    // 2. Calcul du prix TTC
+    const totalPrice =
+      totalPriceWithoutTVA +
+      (totalPriceWithoutTVA * dto.tva) / 100;
 
     return await this.prisma.$transaction(async (prisma) => {
-
+      // 3. Création de la ligne
       const line = await prisma.purchaseOrderLine.create({
         data: {
           ...dto,
@@ -24,16 +33,30 @@ export class PurchaseOrderligneService {
         },
       });
 
-      const po = await prisma.purchaseOrder.findUnique({
-        where: { id: dto.purchaseOrderId },
-      });
+      // 4. Récupération de la commande
+      const purchaseOrder =
+        await prisma.purchaseOrder.findUnique({
+          where: {
+            id: dto.purchaseOrderId,
+          },
+        });
 
-      const newSubTotal = (po?.subTotal || 0) + totalPriceWithoutTVA;
-      const newTax = (po?.tax || 0) + (totalPrice - totalPriceWithoutTVA);
+      // 5. Recalcul des totaux de la commande
+      const newSubTotal =
+        (purchaseOrder?.subTotal || 0) +
+        totalPriceWithoutTVA;
+
+      const newTax =
+        (purchaseOrder?.tax || 0) +
+        (totalPrice - totalPriceWithoutTVA);
+
       const newTotal = newSubTotal + newTax;
 
+      // 6. Mise à jour de la commande
       await prisma.purchaseOrder.update({
-        where: { id: dto.purchaseOrderId },
+        where: {
+          id: dto.purchaseOrderId,
+        },
         data: {
           subTotal: newSubTotal,
           tax: newTax,
@@ -45,65 +68,123 @@ export class PurchaseOrderligneService {
     });
   }
 
-  // ✅ FIND ALL
+  // =========================================================
+  // FIND ALL
+  // =========================================================
+
   async findAll() {
-    return this.prisma.purchaseOrderLine.findMany({
-      include: { purchaseOrder: true },
+    return await this.prisma.purchaseOrderLine.findMany({
+      include: {
+        purchaseOrder: true,
+      },
     });
   }
 
-  // ✅ FIND ONE
+  // =========================================================
+  // FIND ONE
+  // =========================================================
+
   async findOne(id: number) {
-    return this.prisma.purchaseOrderLine.findUnique({
-      where: { id },
-      include: { purchaseOrder: true },
+    return await this.prisma.purchaseOrderLine.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        purchaseOrder: true,
+      },
     });
   }
 
-  // ✅ UPDATE
-  async update(id: number, dto: UpdatePurchaseOrderligneDto) {
+  // =========================================================
+  // UPDATE
+  // =========================================================
 
+  async update(
+    id: number,
+    dto: UpdatePurchaseOrderligneDto,
+  ) {
     return await this.prisma.$transaction(async (prisma) => {
+      // 1. Récupérer l'ancienne ligne
+      const oldLine =
+        await prisma.purchaseOrderLine.findUnique({
+          where: {
+            id,
+          },
+        });
 
-      const old = await prisma.purchaseOrderLine.findUnique({
-        where: { id },
-      });
+      if (!oldLine) {
+        throw new Error('Line not found');
+      }
 
-      if (!old) throw new Error('Line not found');
+      // 2. Récupérer les nouvelles valeurs
+      const quantity =
+        dto.quantity ?? oldLine.quantity;
 
-      const quantity = dto.quantity ?? old.quantity;
-      const unitPrice = dto.unitPrice ?? old.unitPrice;
-      const tva = dto.tva ?? old.tva;
+      const unitPrice =
+        dto.unitPrice ?? oldLine.unitPrice;
 
-      const newWithoutTVA = quantity * unitPrice;
-      const newTotal = newWithoutTVA + (newWithoutTVA * tva / 100);
+      const tva =
+        dto.tva ?? oldLine.tva;
 
-      const updated = await prisma.purchaseOrderLine.update({
-        where: { id },
-        data: {
-          ...dto,
-          totalPriceWithoutTVA: newWithoutTVA,
-          totalPrice: newTotal,
-        },
-      });
+      // 3. Recalcul du prix HT
+      const newWithoutTVA =
+        quantity * unitPrice;
 
-      const po = await prisma.purchaseOrder.findUnique({
-        where: { id: old.purchaseOrderId },
-      });
+      // 4. Recalcul du prix TTC
+      const newTotal =
+        newWithoutTVA +
+        (newWithoutTVA * tva) / 100;
 
-      const oldTax = old.totalPrice - old.totalPriceWithoutTVA;
-      const newTax = newTotal - newWithoutTVA;
+      // 5. Mise à jour de la ligne
+      const updatedLine =
+        await prisma.purchaseOrderLine.update({
+          where: {
+            id,
+          },
+          data: {
+            ...dto,
+            totalPriceWithoutTVA: newWithoutTVA,
+            totalPrice: newTotal,
+          },
+        });
 
+      // 6. Récupérer la commande
+      const purchaseOrder =
+        await prisma.purchaseOrder.findUnique({
+          where: {
+            id: oldLine.purchaseOrderId,
+          },
+        });
+
+      // 7. Calcul de l'ancien et du nouveau montant TVA
+      const oldTax =
+        oldLine.totalPrice -
+        oldLine.totalPriceWithoutTVA;
+
+      const newTax =
+        newTotal - newWithoutTVA;
+
+      // 8. Recalcul du sous-total
       const newSubTotal =
-        (po?.subTotal || 0) - old.totalPriceWithoutTVA + newWithoutTVA;
+        (purchaseOrder?.subTotal || 0) -
+        oldLine.totalPriceWithoutTVA +
+        newWithoutTVA;
 
+      // 9. Recalcul de la TVA totale
       const updatedTax =
-        (po?.tax || 0) - oldTax + newTax;
+        (purchaseOrder?.tax || 0) -
+        oldTax +
+        newTax;
 
-      const newTotalPO = newSubTotal + updatedTax;
+      // 10. Recalcul du total
+      const newTotalPO =
+        newSubTotal + updatedTax;
 
+      // 11. Mise à jour de la commande
       await prisma.purchaseOrder.update({
-        where: { id: old.purchaseOrderId },
+        where: {
+          id: oldLine.purchaseOrderId,
+        },
         data: {
           subTotal: newSubTotal,
           tax: updatedTax,
@@ -111,37 +192,67 @@ export class PurchaseOrderligneService {
         },
       });
 
-      return updated;
+      return updatedLine;
     });
   }
 
-  // ✅ DELETE
+  // =========================================================
+  // DELETE
+  // =========================================================
+
   async remove(id: number) {
-
     return await this.prisma.$transaction(async (prisma) => {
+      // 1. Récupérer la ligne
+      const line =
+        await prisma.purchaseOrderLine.findUnique({
+          where: {
+            id,
+          },
+        });
 
-      const line = await prisma.purchaseOrderLine.findUnique({
-        where: { id },
-      });
+      if (!line) {
+        throw new Error('Line not found');
+      }
 
-      if (!line) throw new Error('Line not found');
+      // 2. Calculer la partie TVA de la ligne
+      const taxPart =
+        line.totalPrice -
+        line.totalPriceWithoutTVA;
 
-      const taxPart = line.totalPrice - line.totalPriceWithoutTVA;
-
+      // 3. Supprimer la ligne
       await prisma.purchaseOrderLine.delete({
-        where: { id },
+        where: {
+          id,
+        },
       });
 
-      const po = await prisma.purchaseOrder.findUnique({
-        where: { id: line.purchaseOrderId },
-      });
+      // 4. Récupérer la commande
+      const purchaseOrder =
+        await prisma.purchaseOrder.findUnique({
+          where: {
+            id: line.purchaseOrderId,
+          },
+        });
 
-      const newSubTotal = (po?.subTotal || 0) - line.totalPriceWithoutTVA;
-      const newTax = (po?.tax || 0) - taxPart;
-      const newTotal = newSubTotal + newTax;
+      // 5. Recalcul du sous-total
+      const newSubTotal =
+        (purchaseOrder?.subTotal || 0) -
+        line.totalPriceWithoutTVA;
 
+      // 6. Recalcul de la TVA
+      const newTax =
+        (purchaseOrder?.tax || 0) -
+        taxPart;
+
+      // 7. Recalcul du total
+      const newTotal =
+        newSubTotal + newTax;
+
+      // 8. Mise à jour de la commande
       await prisma.purchaseOrder.update({
-        where: { id: line.purchaseOrderId },
+        where: {
+          id: line.purchaseOrderId,
+        },
         data: {
           subTotal: newSubTotal,
           tax: newTax,
@@ -149,7 +260,9 @@ export class PurchaseOrderligneService {
         },
       });
 
-      return { message: 'Deleted successfully' };
+      return {
+        message: 'Deleted successfully',
+      };
     });
   }
 }

@@ -5,7 +5,7 @@ export class CreateProductDto {
 
   name: string;
 
-  description?: string;
+  description: string;
 
   unitPrice: number;
 
@@ -14,7 +14,6 @@ export class CreateProductDto {
 unit: Unit;
   taxRate: number;
 
-  categoryId: number;
 
-  active?: boolean;
+  active: boolean;
 }

@@ -3,49 +3,57 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
+import Fuse from 'fuse.js';
+
 import { PrismaService } from '../../prisma/prisma.service';
+
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import Fuse from "fuse.js";
 
 @Injectable()
 export class ProductService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createProductDto: CreateProductDto) {
-    const { categoryId, ...data } = createProductDto;
+  // =========================================
+  // CREATE
+  // =========================================
 
-    return this.prisma.product.create({
+  async create(dto: CreateProductDto) {
+    return await this.prisma.product.create({
       data: {
-        ...data,
-        category: {
-          connect: {
-            id: categoryId,
-          },
-        },
-      },
-      include: {
-        category: true,
+        reference: dto.reference,
+        name: dto.name,
+        description: dto.description,
+        unitPrice: dto.unitPrice,
+        stock: dto.stock,
+        unit: dto.unit,
+        taxRate: dto.taxRate,
+        active: dto.active ?? true,
       },
     });
   }
 
+  // =========================================
+  // FIND ALL
+  // =========================================
+
   async findAll() {
-    return this.prisma.product.findMany({
-      include: {
-        category: true,
-      },
+    return await this.prisma.product.findMany({
       orderBy: {
         name: 'asc',
       },
     });
   }
 
+  // =========================================
+  // FIND ONE
+  // =========================================
+
   async findOne(id: number) {
     const product = await this.prisma.product.findUnique({
-      where: { id },
-      include: {
-        category: true,
+      where: {
+        id,
       },
     });
 
@@ -56,88 +64,104 @@ export class ProductService {
     return product;
   }
 
+  // =========================================
+  // UPDATE
+  // =========================================
+
   async update(id: number, updateDto: UpdateProductDto) {
     await this.findOne(id);
 
-    const { categoryId, ...data } = updateDto;
-
-    return this.prisma.product.update({
+    return await this.prisma.product.update({
       where: {
         id,
       },
       data: {
-        ...data,
-        ...(categoryId && {
-          category: {
-            connect: {
-              id: categoryId,
-            },
-          },
-        }),
-      },
-      include: {
-        category: true,
+        ...updateDto,
       },
     });
   }
+
+  // =========================================
+  // DELETE
+  // =========================================
 
   async remove(id: number) {
     await this.findOne(id);
 
-    return this.prisma.product.delete({
+    return await this.prisma.product.delete({
       where: {
         id,
       },
     });
   }
 
- async searchProduct(keyword: string, language: string = 'fr') {
-  return this.prisma.product.findFirst({
-    where: {
-      active: true,
-      translations: {
-        some: {
-          language,
-          name: {
-            contains: keyword,
-            mode: 'insensitive',
+  // =========================================
+  // SEARCH PRODUCT BY TRANSLATION
+  // =========================================
+
+  async searchProduct(
+    keyword: string,
+    language: string = 'fr',
+  ) {
+    return await this.prisma.product.findFirst({
+      where: {
+        active: true,
+
+        translations: {
+          some: {
+            language,
+
+            name: {
+              contains: keyword,
+              mode: 'insensitive',
+            },
           },
         },
       },
-    },
-    include: {
-      category: true,
-      translations: {
-        where: {
-          language,
-        },
-      },
-    },
-  });
-}
 
-  async findByReference(reference: string) {
-    return this.prisma.product.findUnique({
-      where: {
-        reference,
-      },
       include: {
-        category: true,
+        translations: {
+          where: {
+            language,
+          },
+        },
       },
     });
   }
 
-  async updateStock(id: number, quantity: number) {
+  // =========================================
+  // FIND BY REFERENCE
+  // =========================================
+
+  async findByReference(reference: string) {
+    return await this.prisma.product.findUnique({
+      where: {
+        reference,
+      },
+    });
+  }
+
+  // =========================================
+  // UPDATE STOCK
+  // =========================================
+
+  async updateStock(
+    id: number,
+    quantity: number,
+  ) {
     const product = await this.findOne(id);
 
     if (product.stock + quantity < 0) {
-      throw new BadRequestException('Insufficient stock');
+      throw new BadRequestException(
+        'Insufficient stock',
+      );
     }
 
-    return this.prisma.product.update({
+    return await this.prisma.product.update({
       where: {
         id,
       },
+
       data: {
         stock: {
           increment: quantity,
@@ -145,87 +169,99 @@ export class ProductService {
       },
     });
   }
+
+  // =========================================
+  // FIND BY NAME
+  // =========================================
+
   async findByName(name: string) {
-  return this.prisma.product.findFirst({
-    where: {
-      name: {
-        contains: name,
-        mode: 'insensitive',
+    return await this.prisma.product.findFirst({
+      where: {
+        name: {
+          contains: name,
+          mode: 'insensitive',
+        },
       },
-    },
-    include: {
-      category: true,
-    },
-  });
-}
-async searchProducts(
-  products: {
-    name: string;
-    quantity: number;
-  }[],
-) {
-
-  const dbProducts = await this.prisma.product.findMany({
-    include: {
-      translations: true,
-    },
-  });
-
-  const fuseData = dbProducts.map((product) => ({
-    product,
-    names: [
-      product.name,
-      ...product.translations.map((t) => t.name),
-    ],
-  }));
-
-  const fuse = new Fuse(fuseData, {
-    keys: ["names"],
-    threshold: 0.4,
-    ignoreLocation: true,
-    includeScore: true,
-  });
-
-  const found: {
-    productId: number;
-    quantity: number;
-    name: string;
-  }[] = [];
-
-  const notFound: string[] = [];
-
-  for (const item of products) {
-
-    const matches = fuse.search(item.name);
-
-    if (!matches.length) {
-
-      console.log(`Produit introuvable : ${item.name}`);
-
-      notFound.push(item.name);
-
-      continue;
-    }
-
-    const bestMatch = matches[0];
-
-    console.log(
-      `${item.name} -> ${bestMatch.item.product.name} (score: ${bestMatch.score})`,
-    );
-
-    found.push({
-      productId: bestMatch.item.product.id,
-      quantity: item.quantity,
-      name: bestMatch.item.product.name,
     });
-
   }
 
-  return {
-    found,
-    notFound,
-  };
+  // =========================================
+  // FUZZY PRODUCT SEARCH
+  // =========================================
 
-}
+  async searchProducts(
+    products: {
+      name: string;
+      quantity: number;
+    }[],
+  ) {
+    const dbProducts =
+      await this.prisma.product.findMany({
+        include: {
+          translations: true,
+        },
+      });
 
+    const fuseData = dbProducts.map((product) => ({
+      product,
+
+      names: [
+        product.name,
+        ...product.translations.map(
+          (translation) => translation.name,
+        ),
+      ],
+    }));
+
+    const fuse = new Fuse(fuseData, {
+      keys: ['names'],
+      threshold: 0.4,
+      ignoreLocation: true,
+      includeScore: true,
+    });
+
+    const found: {
+      productId: number;
+      quantity: number;
+      name: string;
+    }[] = [];
+
+    const notFound: string[] = [];
+
+    // =========================================
+    // MATCH PRODUCTS
+    // =========================================
+
+    for (const item of products) {
+      const matches = fuse.search(item.name);
+
+      if (!matches.length) {
+        console.log(
+          `Produit introuvable : ${item.name}`,
+        );
+
+        notFound.push(item.name);
+
+        continue;
+      }
+
+      const bestMatch = matches[0];
+
+      console.log(
+        `${item.name} -> ${bestMatch.item.product.name} ` +
+        `(score: ${bestMatch.score})`,
+      );
+
+      found.push({
+        productId: bestMatch.item.product.id,
+        quantity: item.quantity,
+        name: bestMatch.item.product.name,
+      });
+    }
+
+    return {
+      found,
+      notFound,
+    };
+  }
 }

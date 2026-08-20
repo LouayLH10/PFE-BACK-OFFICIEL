@@ -1,31 +1,47 @@
 import { Injectable } from '@nestjs/common';
+
 import { CreatePurchaseOrderDto } from './dto/create-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from './dto/update-purchase-order.dto';
+
 import { PrismaService } from 'src/prisma/prisma.service';
+
 import * as path from 'path';
 import * as fs from 'fs';
 import * as handlebars from 'handlebars';
+
 import puppeteer from 'puppeteer';
 import puppeteerCore from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(private prisma: PrismaService) {}
 
-  // ✅ CREATE
+  // =========================================================
+  // CREATE
+  // =========================================================
+
   async create(dto: CreatePurchaseOrderDto) {
     const { contactId, ...data } = dto;
 
     const year = new Date().getFullYear();
 
-    const last = await this.prisma.purchaseOrder.findFirst({
-      orderBy: { id: 'desc' },
-    });
+    // Récupérer le dernier Purchase Order
+    const lastPurchaseOrder =
+      await this.prisma.purchaseOrder.findFirst({
+        orderBy: {
+          id: 'desc',
+        },
+      });
 
+    // Générer le prochain numéro
     let nextNumber = 1;
 
-    if (last?.reference) {
-      const lastNumber = parseInt(last.reference.split('-')[2]);
+    if (lastPurchaseOrder?.reference) {
+      const lastNumber = parseInt(
+        lastPurchaseOrder.reference.split('-')[2],
+      );
+
       nextNumber = lastNumber + 1;
     }
 
@@ -34,36 +50,54 @@ export class PurchaseOrderService {
     return await this.prisma.purchaseOrder.create({
       data: {
         ...data,
+
         reference,
+
+        // Initialisation des montants
         subTotal: 0,
         tax: 0,
         total: 0,
+
+        // Relation avec le contact
         contact: {
-          connect: { id: contactId },
+          connect: {
+            id: contactId,
+          },
         },
       },
+
       include: {
         contact: true,
       },
     });
   }
 
-  // ✅ FIND ALL
+  // =========================================================
+  // FIND ALL
+  // =========================================================
+
   async findAll() {
     return await this.prisma.purchaseOrder.findMany({
       include: {
         contact: true,
       },
+
       orderBy: {
         createdAt: 'desc',
       },
     });
   }
 
-  // ✅ FIND ONE
+  // =========================================================
+  // FIND ONE
+  // =========================================================
+
   async findOne(id: number) {
     return await this.prisma.purchaseOrder.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
+
       include: {
         contact: true,
         items: true,
@@ -71,34 +105,55 @@ export class PurchaseOrderService {
     });
   }
 
-  // ✅ UPDATE
-  async update(id: number, dto: UpdatePurchaseOrderDto) {
+  // =========================================================
+  // UPDATE
+  // =========================================================
+
+  async update(
+    id: number,
+    dto: UpdatePurchaseOrderDto,
+  ) {
     const { contactId, ...data } = dto;
 
     return await this.prisma.purchaseOrder.update({
-      where: { id },
+      where: {
+        id,
+      },
+
       data: {
         ...data,
+
         ...(contactId && {
           contact: {
-            connect: { id: contactId },
+            connect: {
+              id: contactId,
+            },
           },
         }),
       },
+
       include: {
         contact: true,
       },
     });
   }
 
-  // ✅ DELETE
+  // =========================================================
+  // DELETE
+  // =========================================================
+
   async remove(id: number) {
     return await this.prisma.purchaseOrder.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
   }
 
-  // ✅ FIND BY USER
+  // =========================================================
+  // FIND PURCHASE ORDERS BY USER
+  // =========================================================
+
   async findByUser(userId: number) {
     return await this.prisma.purchaseOrder.findMany({
       where: {
@@ -106,8 +161,10 @@ export class PurchaseOrderService {
           userId,
         },
       },
+
       include: {
         items: true,
+
         contact: {
           include: {
             user: {
@@ -120,123 +177,203 @@ export class PurchaseOrderService {
           },
         },
       },
+
       orderBy: {
         createdAt: 'desc',
       },
     });
   }
 
-  // ✅ MAP TEMPLATE
-  private mapToTemplate(po: any) {
+  // =========================================================
+  // MAP PURCHASE ORDER TO PDF TEMPLATE
+  // =========================================================
+
+  private mapToTemplate(purchaseOrder: any) {
     return {
-      numero: po.reference,
-      date: new Date(po.createdAt).toLocaleDateString(),
+      numero: purchaseOrder.reference,
 
-      supplierName: po.contact.user.name,
-      supplierEmail: po.contact.user.email,
-      supplierAddress: po.contact.city,
+      date: new Date(
+        purchaseOrder.createdAt,
+      ).toLocaleDateString(),
 
-      items: po.items.map((l) => ({
-        description: l.description,
-        price: l.unitPrice,
-        quantity: l.quantity,
-        total: l.totalPrice,
-        unity: l.unity,
-      })),
+      supplierName:
+        purchaseOrder.contact.user.name,
 
-      subtotal: po.subTotal,
+      supplierEmail:
+        purchaseOrder.contact.user.email,
+
+      supplierAddress:
+        purchaseOrder.contact.city,
+
+      items: purchaseOrder.items.map(
+        (item) => ({
+          description: item.description,
+          price: item.unitPrice,
+          quantity: item.quantity,
+          total: item.totalPrice,
+          unity: item.unity,
+        }),
+      ),
+
+      subtotal: purchaseOrder.subTotal,
+
       tva: 19,
-      tvaAmount: po.tax,
-      total: po.total,
+
+      tvaAmount: purchaseOrder.tax,
+
+      total: purchaseOrder.total,
     };
   }
 
-  // ✅ PDF BY ID
-async generatePdfById(id: number,language:string): Promise<Buffer> {
-  const po = await this.prisma.purchaseOrder.findUnique({
-    where: { id },
-    include: {
-      items: true,
-      contact: {
-        include: {
-          user: true,
+  // =========================================================
+  // GENERATE PDF BY ID
+  // =========================================================
+
+  async generatePdfById(
+    id: number,
+    language: string,
+  ): Promise<Buffer> {
+    const purchaseOrder =
+      await this.prisma.purchaseOrder.findUnique({
+        where: {
+          id,
         },
-      },
-    },
-  });
 
-  if (!po) {
-    throw new Error('Purchase Order not found');
+        include: {
+          items: true,
+
+          contact: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+
+    if (!purchaseOrder) {
+      throw new Error(
+        'Purchase Order not found',
+      );
+    }
+
+    const data =
+      this.mapToTemplate(purchaseOrder);
+
+    return this.generatePdf(
+      data,
+      language,
+    );
   }
 
-  const data = this.mapToTemplate(po);
+  // =========================================================
+  // GENERATE PDF
+  // =========================================================
 
+  async generatePdf(
+    data: any,
+    language: string,
+  ): Promise<Buffer> {
+    // Sélection du template selon la langue
+    const templatePath = path.join(
+      process.cwd(),
+      'src/modules/purchase-order/templates',
+      `purchase-order-${language}.hbs`,
+    );
 
-  return this.generatePdf(data, language);
-}
-async generatePdf(
-  data: any,
-  language: string,
-): Promise<Buffer> {
+    // Lire le template Handlebars
+    const htmlTemplate =
+      fs.readFileSync(
+        templatePath,
+        'utf8',
+      );
 
-  const templatePath = path.join(
-    process.cwd(),
-    'src/modules/purchase-order/templates',
-    `purchase-order-${language}.hbs`,
-  );
+    // Compiler le template
+    const template =
+      handlebars.compile(
+        htmlTemplate,
+      );
 
-  const htmlTemplate = fs.readFileSync(templatePath, 'utf8');
+    // Générer le HTML final
+    const html = template(data);
 
-  const template = handlebars.compile(htmlTemplate);
-  const html = template(data);
+    let browser;
 
-  let browser;
+    // =======================================================
+    // PRODUCTION
+    // =======================================================
 
-  if (process.env.NODE_ENV === 'PROD') {
-    browser = await puppeteerCore.launch({
-      executablePath: await chromium.executablePath(),
-      args: [
-        ...chromium.args,
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-      ],
-      headless: true,
-    });
-  } else {
-    browser = await puppeteer.launch({
-      headless: true,
-    });
+    if (process.env.NODE_ENV === 'PROD') {
+      browser = await puppeteerCore.launch({
+        executablePath:
+          await chromium.executablePath(),
+
+        args: [
+          ...chromium.args,
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+        ],
+
+        headless: true,
+      });
+    }
+
+    // =======================================================
+    // DEVELOPMENT
+    // =======================================================
+
+    else {
+      browser = await puppeteer.launch({
+        headless: true,
+      });
+    }
+
+    try {
+      const page =
+        await browser.newPage();
+
+      // Charger le HTML
+      await page.setContent(html, {
+        waitUntil: 'load',
+      });
+
+      // Générer le PDF
+      const pdf =
+        await page.pdf({
+          format: 'A4',
+          printBackground: true,
+        });
+
+      return Buffer.from(pdf);
+    }
+
+    finally {
+      // Toujours fermer Chromium
+      await browser.close();
+    }
   }
 
-  try {
-    const page = await browser.newPage();
+  // =========================================================
+  // CHANGE STATUS
+  // =========================================================
 
-    await page.setContent(html, {
-      waitUntil: 'load',
-    });
-
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-    });
-
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close();
-  }
-}
-
-  // ✅ CHANGE STATUS
   async changeStatus(id: number) {
-    const po = await this.prisma.purchaseOrder.findUnique({
-      where: { id },
-    });
+    const purchaseOrder =
+      await this.prisma.purchaseOrder.findUnique({
+        where: {
+          id,
+        },
+      });
 
-    if (!po) throw new Error('Purchase Order not found');
+    if (!purchaseOrder) {
+      throw new Error(
+        'Purchase Order not found',
+      );
+    }
 
     let newStatus;
 
-    switch (po.status) {
+    // Gestion des transitions de statut
+    switch (purchaseOrder.status) {
       case 'PENDING':
         newStatus = 'APPROVED';
         break;
@@ -250,11 +387,16 @@ async generatePdf(
         break;
 
       default:
-        throw new Error('Invalid status');
+        throw new Error(
+          'Invalid status',
+        );
     }
 
     return await this.prisma.purchaseOrder.update({
-      where: { id },
+      where: {
+        id,
+      },
+
       data: {
         status: newStatus,
       },
