@@ -309,7 +309,7 @@ export class ProjectService {
       language === 'fr'
         ? 'project-fr.hbs'
         : 'project-en.hbs';
-
+console.log(language)
     const templatePath = path.join(
       process.cwd(),
       'src/modules/project/templates',

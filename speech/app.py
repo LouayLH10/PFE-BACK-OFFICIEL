@@ -6,7 +6,6 @@ from faster_whisper import WhisperModel
 
 # Permet de créer des fichiers temporaires pour stocker l'audio
 import tempfile
-git 
 # Permet de manipuler les fichiers et variables d'environnement
 import os
 

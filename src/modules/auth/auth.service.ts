@@ -65,44 +65,47 @@ export class AuthService {
   // ============================================================
   // Vérifie les identifiants puis génère un token JWT
   // permettant d'authentifier les requêtes suivantes.
-  async login(dto: LoginDto) {
-    // 3.1 Recherche de l'utilisateur par email
-    const user = await this.prisma.user.findUnique({
-      where: {
-        email: dto.email,
-      },
-    });
+async login(dto: LoginDto) {
+  // 3.1 Recherche de l'utilisateur par email
+  const user = await this.prisma.user.findUnique({
+    where: {
+      email: dto.email,
+    },
+  });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // 3.2 Vérification du mot de passe
-    const isMatch = await bcrypt.compare(
-      dto.password,
-      user.password,
-    );
-
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // ============================================================
-    // 4. GÉNÉRATION DU TOKEN JWT
-    // ============================================================
-    // Le payload contient les informations nécessaires
-    // pour identifier l'utilisateur lors des requêtes protégées.
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      name: user.name,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
-
-    // 4.1 Retour du token d'authentification
-    return {
-      access_token: accessToken,
-    };
+  if (!user) {
+    throw new UnauthorizedException('Invalid credentials');
   }
+
+  // 3.2 Vérification du mot de passe
+  const isMatch = await bcrypt.compare(
+    dto.password,
+    user.password,
+  );
+
+  if (!isMatch) {
+    throw new UnauthorizedException('Invalid credentials');
+  }
+
+  // ============================================================
+  // 4. GÉNÉRATION DU TOKEN JWT
+  // ============================================================
+
+  // Payload contenant les informations de l'utilisateur
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    name: user.name,
+  };
+
+  // Génération du token avec une expiration de 1 heure
+  const accessToken = this.jwtService.sign(payload, {
+    expiresIn: '24h',
+  });
+
+  // 4.1 Retour du token d'authentification
+  return {
+    access_token: accessToken,
+  };
+}
 }
